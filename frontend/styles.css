@@ -270,7 +270,7 @@ body {
   min-height: 44px;
   transition: all 0.15s ease;
 }
-.lateral a hover {
+.lateral a:hover {
   background: var(--surface-2);
   color: var(--text);
 }
@@ -280,6 +280,18 @@ body {
   font-weight: 700;
   border-left: 3px solid var(--accent);
   border-radius: 4px var(--raio-sm) var(--raio-sm) 4px;
+}
+.lateral a span { flex: 1; }
+.nav-badge {
+  background: #ec4899;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  padding: 3px 7px;
+  border-radius: 999px;
+  min-width: 18px;
+  text-align: center;
 }
 :root[data-theme="dark"] .lateral a[aria-current="page"] {
   background: rgba(59, 130, 246, 0.15);
@@ -298,6 +310,11 @@ body {
 
 .cabecalho-pagina {
   margin-bottom: 24px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 .cabecalho-pagina h1 {
   font-size: 24px;
@@ -324,6 +341,56 @@ body {
 .cartao:hover {
   box-shadow: var(--shadow-md);
 }
+
+.dropzone {
+  border: 2px dashed var(--border);
+  border-radius: var(--raio);
+  padding: 32px 16px;
+  text-align: center;
+  cursor: pointer;
+  color: var(--text-muted);
+  transition: all 0.15s ease;
+}
+.dropzone svg { color: var(--accent); margin-bottom: 8px; }
+.dropzone p { margin: 4px 0; color: var(--text); }
+.dropzone:hover, .dropzone:focus-visible { border-color: var(--accent); background: var(--accent-light); outline: none; }
+.dropzone-ativa { border-color: var(--accent); background: var(--accent-light); }
+
+.acoes-rapidas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+.acao-rapida {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: var(--raio);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--texto);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow: var(--shadow-sm);
+  transition: all 0.15s ease;
+}
+.acao-rapida svg { flex-shrink: 0; color: var(--accent); }
+.acao-rapida:hover {
+  border-color: var(--accent);
+  background: var(--accent-light);
+  color: var(--accent);
+  transform: translateY(-1px);
+}
+.acao-rapida-alerta {
+  border-color: #ec4899;
+  background: rgba(236, 72, 153, 0.08);
+  color: #ec4899;
+}
+.acao-rapida-alerta svg { color: #ec4899; }
+.acao-rapida-alerta:hover { background: rgba(236, 72, 153, 0.16); }
 
 .kpi-grade {
   display: grid;

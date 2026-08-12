@@ -90,10 +90,41 @@ async function painel(alvo, estado) {
   const conta = (s) => veiculos.filter((v) => v.status === s).length;
   const naFila = (await fila.listarFila()).length;
 
+  const ehMaster = estado.perfil?.papel === "MASTER";
+
   alvo.innerHTML = `
     <div class="cabecalho-pagina">
       <h1>Painel Executivo</h1>
       <p>Bem-vindo(a), <strong>${esc(estado.perfil?.nome ?? "")}</strong> (${esc(estado.perfil?.papel ?? "")}). Acompanhe a situação da frota em tempo real.</p>
+    </div>
+
+    <div class="acoes-rapidas">
+      <a class="acao-rapida" href="#/movimentacoes">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        <span>Nova Movimentação</span>
+      </a>
+      <a class="acao-rapida" href="#/veiculos">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 1 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg>
+        <span>Cadastrar Veículo</span>
+      </a>
+      ${pendentes.length > 0 ? `
+      <a class="acao-rapida acao-rapida-alerta" href="#/movimentacoes">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <span>${pendentes.length} Pendência(s) para Aprovar</span>
+      </a>` : ""}
+      ${ehMaster ? `
+      <a class="acao-rapida" href="#/importar">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+        <span>Importar Planilha</span>
+      </a>
+      <a class="acao-rapida" href="#/cadastros">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+        <span>Nova Portaria/Destino</span>
+      </a>
+      <a class="acao-rapida" href="#/usuarios">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle></svg>
+        <span>Convidar Usuário</span>
+      </a>` : ""}
     </div>
 
     <div class="kpi-grade">
@@ -572,7 +603,10 @@ async function veiculos(alvo, estado) {
   const nomeLocal = mapaLocais(estado);
 
   alvo.innerHTML = `
-    <h1>Veículos</h1>
+    <div class="cabecalho-pagina">
+      <h1>Veículos</h1>
+      <button class="secundario auto" id="btn-exportar-csv">Exportar CSV</button>
+    </div>
     <div class="linha">
       <div class="campo">
         <label for="busca">Buscar por código, placa ou modelo</label>
@@ -596,10 +630,13 @@ async function veiculos(alvo, estado) {
 
     <div id="lista-veiculos">${esqueleto(5)}</div>`;
 
+  let listaAtual = estado.veiculos ?? [];
+
   const desenhar = (termo = "") => {
     const t = termo.trim().toLowerCase();
     const lista = (estado.veiculos ?? []).filter((v) =>
       !t || [v.cod_veiculo, v.placa, v.modelo, v.marca].some((c) => (c ?? "").toLowerCase().includes(t)));
+    listaAtual = lista;
 
     $("#lista-veiculos").innerHTML = lista.length === 0
       ? vazio(t ? "Nenhum veículo encontrado para esta busca." : "Nenhum veículo cadastrado.")
@@ -613,13 +650,22 @@ async function veiculos(alvo, estado) {
                 <td class="num">${esc(v.ano_fabricacao ?? "—")}/${esc(v.ano_modelo ?? "—")}</td>
                 <td>${etiqueta(v.status)}</td>
                 <td>${esc(nomeLocal(v.localizacao_atual) ?? "—")}</td>
-                <td><button class="secundario auto" data-historico="${esc(v.id)}">Histórico</button></td>
+                <td style="white-space:nowrap">
+                  <button class="secundario auto" data-historico="${esc(v.id)}">Histórico</button>
+                  ${ehMaster ? `<button class="secundario auto" data-editar="${esc(v.id)}">Editar</button>` : ""}
+                </td>
             </tr>`).join("")}</tbody></table></div>`;
 
     $$("[data-historico]").forEach((b) => b.addEventListener("click", (e) => {
       const id = e.currentTarget.dataset.historico;
       const veiculo = (estado.veiculos ?? []).find((v) => v.id === id);
       abrirModalHistoricoVeiculo(veiculo, estado, nomeLocal);
+    }));
+
+    $$("[data-editar]").forEach((b) => b.addEventListener("click", (e) => {
+      const id = e.currentTarget.dataset.editar;
+      const veiculo = (estado.veiculos ?? []).find((v) => v.id === id);
+      abrirModalEditarVeiculo(veiculo);
     }));
   };
 
@@ -631,6 +677,27 @@ async function veiculos(alvo, estado) {
     const v = e.target.value;
     debounce = setTimeout(() => desenhar(v), 200);
   });
+
+  $("#btn-exportar-csv").addEventListener("click", (e) => comBotao(e.currentTarget, async () => {
+    if (listaAtual.length === 0) return avisar("Nenhum veículo para exportar.", "erro");
+    const cabecalho = ["cod_veiculo", "placa", "chassi", "marca", "modelo", "cor",
+                        "ano_fabricacao", "ano_modelo", "status", "local_atual"];
+    const csvEsc = (v) => `"${String(v ?? "").replaceAll('"', '""')}"`;
+    const linhas = [cabecalho.join(";")].concat(
+      listaAtual.map((v) => [
+        v.cod_veiculo, v.placa, v.chassi, v.marca, v.modelo, v.cor,
+        v.ano_fabricacao, v.ano_modelo, ROTULO_STATUS[v.status] ?? v.status,
+        nomeLocal(v.localizacao_atual) ?? "",
+      ].map(csvEsc).join(";"))
+    );
+    const blob = new Blob(["﻿" + linhas.join("\n")], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `veiculos_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    avisar(`${listaAtual.length} veículo(s) exportado(s).`, "ok");
+  }));
 
   if (ehMaster) {
     $("#btn-salvar-veiculo").addEventListener("click", (e) => comBotao(e.currentTarget, async () => {
@@ -660,6 +727,58 @@ async function veiculos(alvo, estado) {
       recarregar(true);
     }));
   }
+}
+
+function abrirModalEditarVeiculo(veiculo) {
+  if (!veiculo) return;
+  const campos = [
+    ["cod_veiculo", "Código *", "text"], ["placa", "Placa", "text"], ["chassi", "Chassi", "text"],
+    ["marca", "Marca/Família", "text"], ["modelo", "Modelo", "text"], ["cor", "Cor", "text"],
+    ["ano_fabricacao", "Ano fabricação", "number"], ["ano_modelo", "Ano modelo", "number"],
+  ];
+
+  const overlay = abrirModal({
+    titulo: `Editar veículo`,
+    sub: `Cód: ${esc(veiculo.cod_veiculo)} — alterações valem para a ficha do veículo, não para o histórico.`,
+    conteudoHtml: `<div class="linha">
+        ${campos.map(([id, r, t]) => `<div class="campo">
+            <label for="ed-${id}">${esc(r)}</label>
+            <input id="ed-${id}" type="${t}" autocomplete="off" value="${esc(veiculo[id] ?? "")}"></div>`).join("")}
+      </div>`,
+    acoesHtml: `
+      <button class="secundario auto" data-fechar-modal>Cancelar</button>
+      <button class="primario auto" id="btn-salvar-edicao">Salvar alterações</button>`,
+  });
+
+  overlay.querySelector("[data-fechar-modal]")?.addEventListener("click", fecharModal);
+
+  overlay.querySelector("#btn-salvar-edicao").addEventListener("click", (e) => comBotao(e.currentTarget, async () => {
+    const val = (id) => overlay.querySelector(`#ed-${id}`).value.trim();
+    const cod = val("cod_veiculo");
+    if (!cod) return avisar("O código do veículo é obrigatório.", "erro");
+
+    // Allowlist de campos editáveis: nunca status/localizacao_atual por aqui,
+    // isso só muda via aprovação de movimentação.
+    const registro = {
+      cod_veiculo: cod,
+      placa: val("placa").toUpperCase().replace(/[^A-Z0-9]/g, "") || null,
+      chassi: val("chassi").toUpperCase().replace(/[^A-Z0-9]/g, "") || null,
+      marca: val("marca") || null,
+      modelo: val("modelo") || null,
+      cor: val("cor") || null,
+      ano_fabricacao: val("ano_fabricacao") ? Number(val("ano_fabricacao")) : null,
+      ano_modelo: val("ano_modelo") ? Number(val("ano_modelo")) : null,
+    };
+    const { error } = await sb.from("veiculos").update(registro).eq("id", veiculo.id);
+    if (error) {
+      return avisar(error.code === "23505"
+        ? "Já existe outro veículo com este código, placa ou chassi."
+        : "Não foi possível salvar. Verifique os dados (placa com 7 caracteres, chassi com 17).", "erro", 9000);
+    }
+    avisar("Veículo atualizado.", "ok");
+    fecharModal();
+    recarregar(true);
+  }));
 }
 
 // =====================================================================
@@ -759,25 +878,76 @@ async function importar(alvo) {
   alvo.innerHTML = `
     <h1>Importar planilha</h1>
     <p class="sub">Aceita .xls e .xlsx. As colunas são lidas por nome:
-       Família, Modelo, Chassi, Placa, Veículo, Ano, Cor.</p>
+       Família, Modelo, Chassi, Placa, Veículo, Ano, Cor — não importa a ordem nem a posição.</p>
     <section class="cartao">
-      <div class="campo">
-        <label for="arquivo">Arquivo da planilha (até 8 MB)</label>
-        <input id="arquivo" type="file"
+      <div class="dropzone" id="dropzone" tabindex="0">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+        <p><strong>Arraste a planilha aqui</strong> ou clique para escolher o arquivo</p>
+        <span class="busca-dica">.xls ou .xlsx, até 8 MB</span>
+        <input id="arquivo" type="file" hidden
                accept=".xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
       </div>
-      <button class="primario auto" id="btn-importar">Importar</button>
+      <div id="arquivo-selecionado" class="sub" style="margin-top:10px"></div>
     </section>
+    <div id="previa"></div>
     <div id="relatorio"></div>`;
 
-  $("#btn-importar").addEventListener("click", (e) => comBotao(e.currentTarget, async () => {
-    const arquivo = $("#arquivo").files?.[0];
-    if (!arquivo) return avisar("Escolha a planilha.", "erro");
-    if (arquivo.size > 8 * 1024 * 1024) return avisar("Arquivo acima de 8 MB.", "erro");
-    if (!navigator.onLine) return avisar("A importação exige conexão.", "erro");
+  const dropzone = $("#dropzone");
+  const inputArquivo = $("#arquivo");
+  let arquivoAtual = null;
 
+  const mostrarPrevia = async (arquivo) => {
+    $("#arquivo-selecionado").innerHTML =
+      `Arquivo selecionado: <strong>${esc(arquivo.name)}</strong> (${(arquivo.size / 1024).toFixed(0)} KB)`;
+    $("#previa").innerHTML = esqueleto(2);
+    $("#relatorio").innerHTML = "";
+    try {
+      const buf = await arquivo.arrayBuffer();
+      const p = await api.preVisualizarPlanilha(buf);
+      $("#previa").innerHTML = `
+        <h2>Pré-visualização</h2>
+        <p class="sub">
+          ${esc(p.totalLinhas)} linha(s) de dados encontradas. Colunas detectadas: ${esc(p.colunasDetectadas.join(", "))}.
+          ${p.faltaCodigo ? " O código do veículo será preenchido pela Placa ou Chassi quando faltar." : ""}
+        </p>
+        <div class="tabela-rolagem"><table>
+          <thead><tr><th>Código</th><th>Placa</th><th>Chassi</th><th>Marca</th><th>Modelo</th><th>Cor</th><th>Ano</th></tr></thead>
+          <tbody>${p.amostra.map((l) => `<tr>
+            <td>${esc(l.cod_veiculo || l.placa || l.chassi || "—")}</td>
+            <td>${esc(l.placa || "—")}</td><td>${esc(l.chassi || "—")}</td>
+            <td>${esc(l.marca || "—")}</td><td>${esc(l.modelo || "—")}</td>
+            <td>${esc(l.cor || "—")}</td><td>${esc(l.ano || "—")}</td></tr>`).join("")}
+          </tbody></table></div>
+        <p class="sub">Mostrando as primeiras ${esc(p.amostra.length)} linha(s) de ${esc(p.totalLinhas)}.</p>
+        <button class="primario auto" id="btn-importar">Confirmar importação de ${esc(p.totalLinhas)} linha(s)</button>`;
+      $("#btn-importar").addEventListener("click", (e) => comBotao(e.currentTarget, () => enviarImportacao(arquivo, buf)));
+    } catch (err) {
+      $("#previa").innerHTML = falha(err.message);
+    }
+  };
+
+  const selecionarArquivo = (arquivo) => {
+    if (!arquivo) return;
+    if (arquivo.size > 8 * 1024 * 1024) return avisar("Arquivo acima de 8 MB.", "erro");
+    arquivoAtual = arquivo;
+    mostrarPrevia(arquivo);
+  };
+
+  dropzone.addEventListener("click", () => inputArquivo.click());
+  dropzone.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") inputArquivo.click(); });
+  inputArquivo.addEventListener("change", () => selecionarArquivo(inputArquivo.files?.[0]));
+
+  ["dragenter", "dragover"].forEach((ev) => dropzone.addEventListener(ev, (e) => {
+    e.preventDefault(); dropzone.classList.add("dropzone-ativa");
+  }));
+  ["dragleave", "drop"].forEach((ev) => dropzone.addEventListener(ev, (e) => {
+    e.preventDefault(); dropzone.classList.remove("dropzone-ativa");
+  }));
+  dropzone.addEventListener("drop", (e) => selecionarArquivo(e.dataTransfer?.files?.[0]));
+
+  async function enviarImportacao(arquivo, arrayBuffer) {
+    if (!navigator.onLine) return avisar("A importação exige conexão.", "erro");
     $("#relatorio").innerHTML = esqueleto(3);
-    const arrayBuffer = await arquivo.arrayBuffer();
     const base64 = await new Promise((res, rej) => {
       const fr = new FileReader();
       fr.onload = () => res(String(fr.result).split(",")[1]);
@@ -806,11 +976,12 @@ async function importar(alvo) {
             <td>${esc(x.cod_veiculo)}</td><td>${esc(x.aviso)}</td></tr>`).join("")}
           </tbody></table></div>` : ""}`;
       avisar(`Importação concluída: ${r.importadas} novas, ${r.atualizadas} atualizadas.`, "ok", 8000);
+      $("#previa").innerHTML = "";
       recarregar(true);
     } catch (err) {
       $("#relatorio").innerHTML = falha(err.message);
     }
-  }));
+  }
 }
 
 // =====================================================================

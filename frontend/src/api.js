@@ -214,6 +214,65 @@ async function carregarXLSX() {
   });
 }
 
+const ROTULOS_CAMPO = {
+  cod_veiculo: "Código", placa: "Placa", chassi: "Chassi", marca: "Marca/Família",
+  modelo: "Modelo", cor: "Cor", ano: "Ano", ano_fab: "Ano fabricação", ano_mod: "Ano modelo",
+};
+
+/**
+ * Lê a planilha inteiramente no navegador só para mostrar uma prévia ao
+ * usuário (colunas detectadas + primeiras linhas) antes de confirmar o
+ * envio de verdade. Não grava nada no banco.
+ */
+export async function preVisualizarPlanilha(arrayBuffer) {
+  if (!arrayBuffer) throw new ErroApi("ARQUIVO_INVALIDO", "Arquivo não fornecido.", 400);
+  const XLSX = await carregarXLSX();
+  const wb = XLSX.read(new Uint8Array(arrayBuffer), { type: "array", cellDates: false, cellText: true });
+  const aba = wb.Sheets[wb.SheetNames[0]];
+  if (!aba) throw new ErroApi("ARQUIVO_INVALIDO", "Planilha sem abas.", 422);
+
+  const matriz = XLSX.utils.sheet_to_json(aba, { header: 1, raw: false, defval: "", blankrows: false });
+  if (matriz.length < 2) throw new ErroApi("ARQUIVO_VAZIO", "A planilha não tem linhas de dados.", 422);
+
+  let linhaCabecalhoIdx = -1;
+  let indices = {};
+  for (let r = 0; r < Math.min(20, matriz.length); r++) {
+    const row = (matriz[r] || []).map((c) => normalizarStr(c));
+    const tempIndices = {};
+    row.forEach((colNome, colIdx) => {
+      const campo = ALIASES[colNome];
+      if (campo && tempIndices[campo] === undefined) tempIndices[campo] = colIdx;
+    });
+    if (tempIndices["cod_veiculo"] !== undefined || tempIndices["placa"] !== undefined ||
+        tempIndices["chassi"] !== undefined || tempIndices["modelo"] !== undefined) {
+      linhaCabecalhoIdx = r; indices = tempIndices; break;
+    }
+  }
+
+  if (linhaCabecalhoIdx === -1) {
+    throw new ErroApi("CABECALHO_INVALIDO",
+      'Cabeçalho não encontrado. A planilha deve conter colunas como "NroVeiculo", "Veículo", "Placa", "Chassi" ou "Modelo".', 422);
+  }
+
+  const linhasDados = matriz.slice(linhaCabecalhoIdx + 1)
+    .filter((l) => (l ?? []).some((c) => String(c ?? "").trim() !== ""));
+
+  const amostra = linhasDados.slice(0, 8).map((l) => {
+    const obj = {};
+    for (const [campo, i] of Object.entries(indices)) obj[campo] = String(l[i] ?? "").trim();
+    return obj;
+  });
+
+  const colunasDetectadas = Object.keys(indices).map((c) => ROTULOS_CAMPO[c] ?? c);
+
+  return {
+    totalLinhas: linhasDados.length,
+    colunasDetectadas,
+    amostra,
+    faltaCodigo: indices["cod_veiculo"] === undefined,
+  };
+}
+
 export async function processarPlanilhaNoNavegador(arrayBuffer) {
   if (!arrayBuffer) throw new ErroApi("ARQUIVO_INVALIDO", "Arquivo não fornecido.", 400);
   const XLSX = await carregarXLSX();

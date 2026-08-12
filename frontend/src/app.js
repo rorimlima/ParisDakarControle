@@ -53,6 +53,18 @@ navigator.serviceWorker?.addEventListener?.("message", (e) => {
   if (e.data?.tipo === "SINCRONIZAR") sincronizarAgora();
 });
 
+// --------------------------------------------------------------- badge
+async function atualizarBadgePendentes() {
+  const badge = $("#badge-pendentes");
+  if (!badge || !estado.perfil) return;
+  try {
+    const { dados } = await api.listarMovimentacoes({ status: "PENDENTE" });
+    const n = dados.length;
+    badge.textContent = n > 99 ? "99+" : String(n);
+    badge.hidden = n === 0;
+  } catch { /* falha silenciosa: badge não é crítico */ }
+}
+
 // -------------------------------------------------------------- rotas
 function rotaAtual() {
   const bruta = (location.hash || "#/painel").replace(/^#\//, "").split("/")[0];
@@ -110,6 +122,7 @@ document.addEventListener("pd:recarregar", async (e) => {
     estado.veiculos = dados;
   }
   renderizar();
+  atualizarBadgePendentes();
 });
 
 // ----------------------------------------------------------- realtime
@@ -119,6 +132,7 @@ function ligarRealtime() {
   canal = sb.channel("frota")
     .on("postgres_changes", { event: "*", schema: "public", table: "movimentacoes" }, async () => {
       if (["painel", "movimentacoes"].includes(estado.rota)) await renderizar();
+      atualizarBadgePendentes();
     })
     .on("postgres_changes", { event: "UPDATE", schema: "public", table: "veiculos" }, async () => {
       const { dados } = await api.listarVeiculos();
@@ -155,6 +169,7 @@ async function entrarNoApp() {
   ligarRealtime();
   pintarConexao();
   await renderizar();
+  atualizarBadgePendentes();
   sincronizarAgora();
 }
 
