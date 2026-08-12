@@ -86,3 +86,53 @@ export async function comBotao(botao, fn) {
   try { return await fn(); }
   finally { botao.disabled = false; botao.textContent = antes; }
 }
+
+/** Gerenciamento de Janelas Modais */
+export function fecharModal() {
+  const ativo = document.querySelector(".modal-overlay");
+  if (ativo) {
+    ativo.remove();
+    document.body.style.overflow = "";
+  }
+}
+
+export function abrirModal({ titulo, sub = "", conteudoHtml = "", acoesHtml = "" }) {
+  fecharModal();
+
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.innerHTML = `
+    <div class="modal-janela" role="dialog" aria-modal="true" aria-labelledby="modal-titulo">
+      <div class="modal-cabecalho">
+        <div class="modal-titulo-caixa">
+          <h2 id="modal-titulo">${esc(titulo)}</h2>
+          ${sub ? `<p>${esc(sub)}</p>` : ""}
+        </div>
+        <button class="modal-fechar" aria-label="Fechar janela" title="Fechar (ESC)">&times;</button>
+      </div>
+      <div class="modal-corpo">${conteudoHtml}</div>
+      ${acoesHtml ? `<div class="modal-rodape">${acoesHtml}</div>` : ""}
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+  document.body.style.overflow = "hidden";
+
+  const btnFechar = overlay.querySelector(".modal-fechar");
+  btnFechar?.addEventListener("click", fecharModal);
+
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) fecharModal();
+  });
+
+  const escHandler = (e) => {
+    if (e.key === "Escape") {
+      fecharModal();
+      document.removeEventListener("keydown", escHandler);
+    }
+  };
+  document.addEventListener("keydown", escHandler);
+
+  return overlay;
+}
+

@@ -21,23 +21,33 @@ const etiqueta = (s) =>
 // =====================================================================
 // LOGIN
 // =====================================================================
+// =====================================================================
+// LOGIN
+// =====================================================================
 export function telaLogin(alvo) {
   alvo.innerHTML = `
-    <section class="login cartao">
-      <h1>Paris Dakar Controle</h1>
-      <p class="sub">Entre com seu e-mail corporativo.</p>
-      <div class="campo">
-        <label for="email">E-mail</label>
-        <input id="email" type="email" autocomplete="username" inputmode="email" required>
-      </div>
-      <div class="campo">
-        <label for="senha">Senha</label>
-        <input id="senha" type="password" autocomplete="current-password" required>
-      </div>
-      <p id="erro-login" class="erro-campo" hidden></p>
-      <button class="primario" id="btn-entrar">Entrar</button>
-      <button class="secundario" id="btn-esqueci" style="margin-top:8px">Esqueci minha senha</button>
-    </section>`;
+    <div class="login-container">
+      <section class="login-card">
+        <div class="login-header">
+          <div class="login-logo">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 1 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg>
+          </div>
+          <h1>Paris Dakar Controle</h1>
+          <p>Acesse com suas credenciais corporativas</p>
+        </div>
+        <div class="campo">
+          <label for="email">E-mail corporativo</label>
+          <input id="email" type="email" autocomplete="username" inputmode="email" placeholder="seu.email@empresa.com" required>
+        </div>
+        <div class="campo">
+          <label for="senha">Senha de acesso</label>
+          <input id="senha" type="password" autocomplete="current-password" placeholder="••••••••" required>
+        </div>
+        <p id="erro-login" class="erro-campo" hidden></p>
+        <button class="primario" id="btn-entrar" style="width:100%">Entrar no sistema</button>
+        <button class="secundario" id="btn-esqueci" style="width:100%; margin-top:10px">Esqueci minha senha</button>
+      </section>
+    </div>`;
 
   const mostrarErro = (msg) => {
     const p = $("#erro-login");
@@ -52,8 +62,6 @@ export function telaLogin(alvo) {
     if (!email || !password) return mostrarErro("Informe e-mail e senha.");
 
     const { error } = await sb.auth.signInWithPassword({ email, password });
-    // Mensagem idêntica para e-mail inexistente e senha errada: senão vira
-    // enumeração de usuário.
     if (error) return mostrarErro("E-mail ou senha inválidos.");
   });
 
@@ -72,7 +80,7 @@ export function telaLogin(alvo) {
 // PAINEL
 // =====================================================================
 async function painel(alvo, estado) {
-  alvo.innerHTML = `<h1>Painel</h1>${esqueleto(3)}`;
+  alvo.innerHTML = `<div class="cabecalho-pagina"><h1>Painel Executivo</h1></div>${esqueleto(3)}`;
 
   const { dados: pendentes } = await api.listarMovimentacoes({ status: "PENDENTE" });
   const veiculos = estado.veiculos ?? [];
@@ -82,33 +90,53 @@ async function painel(alvo, estado) {
   const naFila = (await fila.listarFila()).length;
 
   alvo.innerHTML = `
-    <h1>Painel</h1>
-    <p class="sub">Olá, ${esc(estado.perfil?.nome ?? "")} — perfil ${esc(estado.perfil?.papel ?? "")}.</p>
-
-    <div class="grade">
-      ${[["Frota ativa", veiculos.length], ["Disponíveis", conta("DISPONIVEL")],
-         ["Em trânsito", conta("EM_TRANSITO")], ["Na portaria", conta("NA_PORTARIA")],
-         ["No destino", conta("NO_DESTINO")], ["Pendências", pendentes.length],
-         ["Fila offline", naFila]]
-        .map(([r, n]) => `<div class="cartao"><label>${esc(r)}</label>
-             <div style="font-size:26px;font-variant-numeric:tabular-nums">${esc(n)}</div></div>`)
-        .join("")}
+    <div class="cabecalho-pagina">
+      <h1>Painel Executivo</h1>
+      <p>Bem-vindo(a), <strong>${esc(estado.perfil?.nome ?? "")}</strong> (${esc(estado.perfil?.papel ?? "")}). Acompanhe a situação da frota em tempo real.</p>
     </div>
 
-    <h2>Pendências aguardando decisão</h2>
+    <div class="kpi-grade">
+      <div class="kpi-card">
+        <span class="kpi-label">Total da Frota</span>
+        <span class="kpi-valor">${esc(veiculos.length)}</span>
+      </div>
+      <div class="kpi-card" data-tipo="portaria">
+        <span class="kpi-label">Na Portaria</span>
+        <span class="kpi-valor">${esc(conta("NA_PORTARIA"))}</span>
+      </div>
+      <div class="kpi-card" data-tipo="transito">
+        <span class="kpi-label">Em Trânsito</span>
+        <span class="kpi-valor">${esc(conta("EM_TRANSITO"))}</span>
+      </div>
+      <div class="kpi-card" data-tipo="destino">
+        <span class="kpi-label">No Destino</span>
+        <span class="kpi-valor">${esc(conta("NO_DESTINO"))}</span>
+      </div>
+      <div class="kpi-card" data-tipo="pendente">
+        <span class="kpi-label">Pendências</span>
+        <span class="kpi-valor">${esc(pendentes.length)}</span>
+      </div>
+      ${naFila > 0 ? `
+      <div class="kpi-card" data-tipo="pendente">
+        <span class="kpi-label">Fila Offline</span>
+        <span class="kpi-valor">${esc(naFila)}</span>
+      </div>` : ""}
+    </div>
+
+    <h2>Pendências Aguardando Aprovação</h2>
     ${pendentes.length === 0
-      ? vazio("Nenhuma movimentação pendente.",
-              '<a class="etiqueta" href="#/movimentacoes">Registrar movimentação</a>')
+      ? vazio("Nenhuma movimentação pendente no momento.",
+              '<a class="etiqueta" href="#/movimentacoes">Registrar Movimentação</a>')
       : tabelaMovimentacoes(pendentes, estado, nomeLocal)}
 
-    <h2>Onde está cada veículo</h2>
+    <h2>Localização da Frota</h2>
     ${veiculos.length === 0
-      ? vazio("Nenhum veículo cadastrado.",
-              '<a class="etiqueta" href="#/importar">Importar planilha</a>')
+      ? vazio("Nenhum veículo cadastrado no sistema.",
+              '<a class="etiqueta" href="#/importar">Importar Planilha</a>')
       : `<div class="tabela-rolagem"><table>
-          <thead><tr><th>Código</th><th>Placa</th><th>Modelo</th><th>Status</th><th>Local atual</th></tr></thead>
+          <thead><tr><th>Código</th><th>Placa</th><th>Modelo</th><th>Status</th><th>Local Atual</th></tr></thead>
           <tbody>${veiculos.slice(0, 200).map((v) => `
-            <tr><td>${esc(v.cod_veiculo)}</td><td>${esc(v.placa ?? "—")}</td>
+            <tr><td><strong>${esc(v.cod_veiculo)}</strong></td><td>${esc(v.placa ?? "—")}</td>
                 <td>${esc(v.modelo ?? "—")}</td><td>${etiqueta(v.status)}</td>
                 <td>${esc(nomeLocal(v.localizacao_atual) ?? "—")}</td></tr>`).join("")}
           </tbody></table></div>`}`;

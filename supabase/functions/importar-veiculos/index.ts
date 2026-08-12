@@ -2,9 +2,8 @@
 // POST /functions/v1/importar-veiculos   { arquivo_base64, nome_arquivo? }
 //
 // Aceita .xls (BIFF, que é o formato real do Rel_MalaDireta.xls) e .xlsx.
-// O mapeamento é por NOME DA COLUNA, normalizado sem acento e sem caixa —
-// posição de coluna muda a cada exportação do ERP, nome não.
-// A persistência inteira acontece numa única RPC transacional.
+// O mapeamento é por NOME DA COLUNA (normalizado) e encontra dinamicamente
+// a linha do cabeçalho mesmo se houver linhas de título do ERP acima.
 // =====================================================================
 import * as XLSX from "https://esm.sh/xlsx@0.18.5";
 import { preflight } from "../_shared/cors.ts";
@@ -13,14 +12,78 @@ import { clienteDoUsuario, usuarioAutenticado } from "../_shared/auth.ts";
 import { schemaImportacao, validar } from "../_shared/schemas.ts";
 import { limitar } from "../_shared/ratelimit.ts";
 
-const MAPA_COLUNAS: Record<string, string> = {
-  familia: "marca",
-  modelo: "modelo",
-  chassi: "chassi",
-  placa: "placa",
-  veiculo: "cod_veiculo",
-  ano: "ano",
-  cor: "cor",
+const ALIASES: Record<string, string> = {
+  // Código do Veículo / NroVeiculo
+  "nroveiculo": "cod_veiculo",
+  "numveiculo": "cod_veiculo",
+  "numeroveiculo": "cod_veiculo",
+  "veiculo": "cod_veiculo",
+  "codveiculo": "cod_veiculo",
+  "codigo": "cod_veiculo",
+  "cod": "cod_veiculo",
+  "codigoveiculo": "cod_veiculo",
+  "codigodoveiculo": "cod_veiculo",
+  "frota": "cod_veiculo",
+  "codfrota": "cod_veiculo",
+  "codigofrota": "cod_veiculo",
+  "idveiculo": "cod_veiculo",
+  "cdveiculo": "cod_veiculo",
+  "patrimonio": "cod_veiculo",
+  "prefixo": "cod_veiculo",
+  "codigoempresa": "cod_veiculo",
+  "codveic": "cod_veiculo",
+  "nro": "cod_veiculo",
+
+  // Placa
+  "placa": "placa",
+  "placaveiculo": "placa",
+  "nroplaca": "placa",
+  "numplaca": "placa",
+  "placaatual": "placa",
+
+  // Chassi
+  "chassi": "chassi",
+  "chassis": "chassi",
+  "numchassi": "chassi",
+  "numerochassi": "chassi",
+  "chassiveiculo": "chassi",
+  "nrochassi": "chassi",
+
+  // Marca / Família
+  "marca": "marca",
+  "familia": "marca",
+  "fabricante": "marca",
+  "montadora": "marca",
+  "marcamodelo": "marca",
+  "marcaveiculo": "marca",
+  "descmarca": "marca",
+
+  // Modelo
+  "modelo": "modelo",
+  "descmodelo": "modelo",
+  "descricaomodelo": "modelo",
+  "descricao": "modelo",
+  "descricaoveiculo": "modelo",
+  "veiculomodelo": "modelo",
+  "modeloversao": "modelo",
+  "versao": "modelo",
+  "descmodeloveic": "modelo",
+  "nomemodelo": "modelo",
+
+  // Cor
+  "cor": "cor",
+  "corpredominante": "cor",
+  "corveiculo": "cor",
+  "desccor": "cor",
+
+  // Ano / Fabricação / Modelo
+  "ano": "ano",
+  "anomodelo": "ano_mod",
+  "anofabricacao": "ano_fab",
+  "anofabmod": "ano",
+  "anomodelofabricacao": "ano",
+  "anofab": "ano_fab",
+  "anomod": "ano_mod"
 };
 
 const normalizar = (s: string) =>
@@ -59,7 +122,6 @@ Deno.serve(async (req: Request) => {
   const sb = clienteDoUsuario(req);
   const usuario = await usuarioAutenticado(sb);
   if (!usuario) return erro(req, "NAO_AUTENTICADO", "Faça login novamente.", 401);
-  // A autorização MASTER é decidida na RPC (app.eh_master()), não aqui.
 
   const limite = await limitar(sb, "importacao", 5, 60);
   if (limite) return erro(req, limite.code, limite.message, 429);
@@ -83,38 +145,67 @@ Deno.serve(async (req: Request) => {
     const aba = wb.Sheets[wb.SheetNames[0]];
     if (!aba) return erro(req, "ARQUIVO_INVALIDO", "Planilha sem abas.", 422);
 
-    // header:1 -> matriz crua; a primeira linha é o cabeçalho.
     const matriz = XLSX.utils.sheet_to_json<string[]>(aba, {
       header: 1, raw: false, defval: "", blankrows: false,
     });
     if (matriz.length < 2) return erro(req, "ARQUIVO_VAZIO", "A planilha não tem linhas de dados.", 422);
 
-    const cabecalho = (matriz[0] as string[]).map((c) => normalizar(String(c ?? "")));
-    const indices: Record<string, number> = {};
-    cabecalho.forEach((nome, i) => {
-      const campo = MAPA_COLUNAS[nome];
-      if (campo && indices[campo] === undefined) indices[campo] = i;
-    });
+    // Busca a linha do cabeçalho escaneando as primeiras 20 linhas
+    let linhaCabecalhoIdx = -1;
+    let indices: Record<string, number> = {};
 
-    if (indices["cod_veiculo"] === undefined) {
-      return erro(req, "CABECALHO_INVALIDO",
-        'Coluna "Veículo" não encontrada no cabeçalho da planilha.', 422);
+    for (let r = 0; r < Math.min(20, matriz.length); r++) {
+      const row = (matriz[r] as string[]).map((c) => normalizar(String(c ?? "")));
+      const tempIndices: Record<string, number> = {};
+
+      row.forEach((colNome, colIdx) => {
+        const campo = ALIASES[colNome];
+        if (campo && tempIndices[campo] === undefined) {
+          tempIndices[campo] = colIdx;
+        }
+      });
+
+      if (tempIndices["cod_veiculo"] !== undefined || tempIndices["placa"] !== undefined ||
+          tempIndices["chassi"] !== undefined || tempIndices["modelo"] !== undefined) {
+        linhaCabecalhoIdx = r;
+        indices = tempIndices;
+        break;
+      }
     }
 
-    linhas = matriz.slice(1).map((l) => {
+    if (linhaCabecalhoIdx === -1) {
+      return erro(req, "CABECALHO_INVALIDO",
+        'Cabeçalho não encontrado. A planilha deve conter colunas como "NroVeiculo", "Veículo", "Placa", "Chassi" ou "Modelo".', 422);
+    }
+
+    linhas = matriz.slice(linhaCabecalhoIdx + 1).map((l) => {
       const obj: Record<string, string> = {};
       for (const [campo, i] of Object.entries(indices)) {
         obj[campo] = String((l as string[])[i] ?? "").trim();
       }
+
+      // Se ano_fab e ano_mod vierem em colunas separadas (ex: NroVeiculo, AnoFab, AnoMod)
+      if (!obj["ano"] && (obj["ano_fab"] || obj["ano_mod"])) {
+        const fab = obj["ano_fab"] || "";
+        const mod = obj["ano_mod"] || fab;
+        obj["ano"] = fab ? `${fab}/${mod}` : mod;
+      }
+
+      // Se cod_veiculo não veio preenchido, usa a Placa ou Chassi como fallback
+      if (!obj["cod_veiculo"]) {
+        if (obj["placa"]) obj["cod_veiculo"] = obj["placa"];
+        else if (obj["chassi"]) obj["cod_veiculo"] = obj["chassi"];
+      }
+
       return obj;
-    }).filter((o) => Object.values(o).some((x) => x !== ""));
+    }).filter((o) => o["cod_veiculo"] || o["placa"] || o["chassi"] || o["modelo"]);
   } catch (e) {
     console.error("falha_parse_planilha", String(e));
     return erro(req, "ARQUIVO_INVALIDO", "Não foi possível interpretar a planilha.", 422);
   }
 
-  if (linhas.length === 0) return erro(req, "ARQUIVO_VAZIO", "Nenhuma linha de dados.", 422);
-  if (linhas.length > 20000) return erro(req, "ARQUIVO_GRANDE", "Máximo de 20000 linhas.", 413);
+  if (linhas.length === 0) return erro(req, "ARQUIVO_VAZIO", "Nenhuma linha válida de veículos encontrada.", 422);
+  if (linhas.length > 20000) return erro(req, "ARQUIVO_GRANDE", "Máximo de 20000 linhas por lote.", 413);
 
   const { data, error } = await sb.rpc("importar_veiculos", { p_linhas: linhas });
   if (error) return erroDoBanco(req, error);

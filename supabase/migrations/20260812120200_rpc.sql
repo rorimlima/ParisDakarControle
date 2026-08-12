@@ -481,13 +481,19 @@ begin
     v_i := v_i + 1;
     v_aviso := null;
     begin
-      v_cod := nullif(btrim(coalesce(v_linha->>'cod_veiculo', '')), '');
-      if v_cod is null then
-        raise exception 'coluna "Veiculo" (cod_veiculo) vazia';
-      end if;
-
       v_placa  := app.normaliza_placa(v_linha->>'placa');
       v_chassi := app.normaliza_chassi(v_linha->>'chassi');
+      v_cod    := nullif(btrim(coalesce(v_linha->>'cod_veiculo', '')), '');
+
+      if v_cod is null then
+        v_cod := v_placa;
+      end if;
+      if v_cod is null then
+        v_cod := v_chassi;
+      end if;
+      if v_cod is null then
+        raise exception 'linha sem codigo de veiculo, placa ou chassi';
+      end if;
 
       if v_chassi is null and nullif(btrim(coalesce(v_linha->>'chassi','')), '') is not null then
         v_aviso := 'chassi invalido ignorado';

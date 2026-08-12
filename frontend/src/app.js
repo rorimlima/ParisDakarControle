@@ -61,6 +61,10 @@ function rotaAtual() {
 
 export async function renderizar() {
   const alvo = $("#conteudo");
+  if (!estado.perfil) {
+    return mostrarLogin();
+  }
+
   estado.rota = rotaAtual();
 
   const pagina = PAGINAS[estado.rota];
@@ -87,7 +91,11 @@ window.addEventListener("hashchange", () => {
     const backdrop = $("#menu-backdrop");
     if (backdrop) backdrop.hidden = true;
   }
-  renderizar();
+  if (!estado.perfil) {
+    mostrarLogin();
+  } else {
+    renderizar();
+  }
 });
 
 document.addEventListener("click", (e) => {
