@@ -1,0 +1,44 @@
+# Configuração local do Supabase CLI (supabase start / supabase db reset)
+project_id = "paris-dakar-controle"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "storage", "graphql_public"]   # schema "app" fora da API por decisão
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+major_version = 15
+
+[studio]
+enabled = true
+port = 54323
+
+[storage]
+enabled = true
+file_size_limit = "8MiB"
+
+[auth]
+enabled = true
+site_url = "http://localhost:5173"
+additional_redirect_urls = ["http://localhost:5173"]
+jwt_expiry = 3600
+enable_refresh_token_rotation = true
+refresh_token_reuse_interval = 10
+enable_signup = false            # usuário só entra por convite do MASTER
+
+[auth.email]
+enable_signup = false
+enable_confirmations = true
+double_confirm_changes = true
+
+[functions.movimentacoes]
+verify_jwt = true
+[functions.vistorias]
+verify_jwt = true
+[functions.importar-veiculos]
+verify_jwt = true
+[functions.usuarios]
+verify_jwt = true

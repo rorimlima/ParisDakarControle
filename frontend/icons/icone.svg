@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Paris Dakar Controle">
+  <rect width="512" height="512" rx="96" fill="#0f1115"/>
+  <path d="M96 320h320l-28-84a48 48 0 0 0-45-33H169a48 48 0 0 0-45 33z" fill="#60a5fa"/>
+  <circle cx="168" cy="344" r="36" fill="#e8eaee"/>
+  <circle cx="344" cy="344" r="36" fill="#e8eaee"/>
+  <rect x="96" y="150" width="320" height="18" rx="9" fill="#4b5563"/>
+</svg>

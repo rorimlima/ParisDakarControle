@@ -1,0 +1,17 @@
+{
+  "name": "paris-dakar-controle",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Controle de frota offline-first sobre Supabase",
+  "scripts": {
+    "db:reset": "supabase db reset",
+    "db:push": "supabase db push",
+    "deploy:functions": "supabase functions deploy movimentacoes vistorias importar-veiculos usuarios",
+    "criar-master": "node scripts/criar-master.mjs",
+    "importar": "node scripts/importar-planilha.mjs",
+    "dev": "node scripts/servir-frontend.mjs",
+    "build": "node scripts/build-config.mjs",
+    "test": "node tests/run.mjs"
+  }
+}
