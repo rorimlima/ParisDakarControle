@@ -135,8 +135,8 @@ const destino = await criarSetup("destinos",
 
 // Linhas equivalentes às da planilha real, incluindo os casos sujos:
 // placa vazia e chassi inválido repetido.
-const PLACA_TESTE = `T${SUFIXO.toUpperCase().padEnd(6, 'X').slice(0, 6)}`;
-const CHASSI_TESTE = `9BD358A${SUFIXO.toUpperCase().padEnd(10, 'X').slice(0, 10)}`;
+const PLACA_TESTE = `T${SUFIXO.toUpperCase().replace(/[^A-Z0-9]/g, '9').padEnd(6, 'X').slice(0, 6)}`;
+const CHASSI_TESTE = `9BD358A${SUFIXO.toUpperCase().replace(/[^A-Z0-9]/g, '9').replace(/[IOQ]/g, 'X').padEnd(10, '8').slice(0, 10)}`;
 const LINHAS = [
   { cod_veiculo: `T${SUFIXO}A`, placa: PLACA_TESTE, chassi: CHASSI_TESTE,
     marca: "FIAT - SEMINOVOS", modelo: "ARGO DRIVE 1.0", ano: "2025/2026", cor: "CINZA" },
