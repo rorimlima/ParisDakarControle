@@ -8,6 +8,7 @@ import * as fila from "/src/fila.js";
 import {
   $, $$, esc, avisar, esqueleto, vazio, falha, dataHora,
   ROTULO_STATUS, ROTULO_TIPO, TIPOS_FOTO, NIVEIS, comBotao,
+  abrirModal, fecharModal,
 } from "/src/ui.js";
 
 const recarregar = (recarregarBase = false) =>
@@ -164,15 +165,21 @@ function tabelaMovimentacoes(lista, estado, nomeLocal) {
         <td>${esc(nomeLocal(m.portaria_id ?? m.destino_id) ?? "—")}</td>
         <td>${esc(dataHora(m.data_hora))}</td>
         <td>${etiqueta(m.status)}</td>
-        <td>${m.status === "PENDENTE" && podeDecidir(m) ? `
-          <button class="secundario auto" data-vistoria="${esc(m.id)}">Vistoria</button>
-          <button class="primario auto" data-decidir="${esc(m.id)}" data-decisao="APROVADO">Aprovar</button>
-          <button class="perigo auto" data-decidir="${esc(m.id)}" data-decisao="REJEITADO">Rejeitar</button>`
-          : "—"}</td></tr>`;
+        <td>
+          <button class="secundario auto" data-detalhes="${esc(m.id)}">Detalhes</button>
+          ${m.status === "PENDENTE" && podeDecidir(m) ? `
+            <button class="secundario auto" data-vistoria="${esc(m.id)}">Vistoria</button>
+            <button class="primario auto" data-decidir="${esc(m.id)}" data-decisao="APROVADO">Aprovar</button>
+            <button class="perigo auto" data-decidir="${esc(m.id)}" data-decisao="REJEITADO">Rejeitar</button>`
+            : ""}
+        </td></tr>`;
     }).join("")}</tbody></table></div>`;
 }
 
-function ligarAcoesMovimentacao(alvo) {
+function ligarAcoesMovimentacao(alvo, estado, nomeLocal) {
+  $$("[data-detalhes]", alvo).forEach((b) =>
+    b.addEventListener("click", (e) => abrirModalDetalhesMovimentacao(e.currentTarget.dataset.detalhes, estado, nomeLocal)));
+
   $$("[data-decidir]", alvo).forEach((b) =>
     b.addEventListener("click", (e) => comBotao(e.currentTarget, async () => {
       const { decidir, decisao } = e.currentTarget.dataset;
@@ -191,6 +198,102 @@ function ligarAcoesMovimentacao(alvo) {
     b.addEventListener("click", (e) => { location.hash = `#/vistoria/${e.currentTarget.dataset.vistoria}`; }));
 }
 
+async function abrirModalHistoricoVeiculo(veiculo, estado, nomeLocal) {
+  if (!veiculo) return;
+  const cod = esc(veiculo.cod_veiculo);
+  const placa = veiculo.placa ? esc(veiculo.placa) : "Sem placa";
+  const modelo = veiculo.modelo ? esc(veiculo.modelo) : "Sem modelo";
+  const chassi = veiculo.chassi ? ` · Chassi: ${esc(veiculo.chassi)}` : "";
+  const sub = `${placa} · ${modelo}${chassi} | Local Atual: ${esc(nomeLocal(veiculo.localizacao_atual) ?? "—")}`;
+
+  const overlay = abrirModal({
+    titulo: `Histórico do Veículo (Cód: ${cod})`,
+    sub,
+    conteudoHtml: `<div id="modal-historico-conteudo">${esqueleto(3)}</div>`,
+    acoesHtml: `<button class="secundario auto" data-fechar-modal>Fechar</button>`,
+  });
+
+  overlay.querySelector("[data-fechar-modal]")?.addEventListener("click", fecharModal);
+
+  const caixa = overlay.querySelector("#modal-historico-conteudo");
+  const { dados } = await api.listarMovimentacoes({ veiculo_id: veiculo.id });
+
+  if (dados.length === 0) {
+    caixa.innerHTML = vazio("Nenhuma movimentação registrada para este veículo.");
+  } else {
+    caixa.innerHTML = tabelaMovimentacoes(dados, estado, nomeLocal);
+    ligarAcoesMovimentacao(caixa, estado, nomeLocal);
+  }
+}
+
+async function abrirModalDetalhesMovimentacao(movId, estado, nomeLocal) {
+  const { data: mov } = await sb.from("movimentacoes")
+    .select("*").eq("id", movId).maybeSingle();
+
+  if (!mov) return avisar("Movimentação não encontrada.", "erro");
+
+  const veiculo = (estado.veiculos ?? []).find((v) => v.id === mov.veiculo_id);
+  const vCod = veiculo ? esc(veiculo.cod_veiculo) : "—";
+  const vPlaca = veiculo?.placa ? esc(veiculo.placa) : "Sem placa";
+  const vModelo = veiculo?.modelo ? esc(veiculo.modelo) : "";
+
+  const overlay = abrirModal({
+    titulo: `Detalhes da Movimentação`,
+    sub: `${vPlaca} · ${vModelo} (Cód: ${vCod}) — ${esc(ROTULO_TIPO[mov.tipo] ?? mov.tipo)}`,
+    conteudoHtml: `<div id="modal-detalhes-conteudo">${esqueleto(3)}</div>`,
+    acoesHtml: `<button class="secundario auto" data-fechar-modal>Fechar</button>`,
+  });
+
+  overlay.querySelector("[data-fechar-modal]")?.addEventListener("click", fecharModal);
+
+  const caixa = overlay.querySelector("#modal-detalhes-conteudo");
+  const { data: vist } = await api.listarVistoria(movId);
+
+  let fotosHtml = "";
+  const fotos = vist?.fotos_vistoria ?? [];
+  if (fotos.length > 0) {
+    const urls = await Promise.all(fotos.map(async (f) => {
+      const u = await api.urlAssinada(f.url);
+      return { ...f, signedUrl: u };
+    }));
+    fotosHtml = `
+      <h3 style="margin-top:20px;font-size:14px;font-weight:700">Fotos da Vistoria (${fotos.length})</h3>
+      <div class="galeria-fotos-modal">
+        ${urls.map((f) => `
+          <figure>
+            <a href="${esc(f.signedUrl)}" target="_blank" title="Clique para abrir a foto original">
+              <img src="${esc(f.signedUrl)}" alt="${esc(f.tipo)}" loading="lazy">
+            </a>
+            <figcaption>${esc(f.tipo.replaceAll("_", " ").toLowerCase())}</figcaption>
+          </figure>
+        `).join("")}
+      </div>`;
+  }
+
+  caixa.innerHTML = `
+    <div class="cartao" style="margin-bottom:16px;box-shadow:none;background:var(--surface-2)">
+      <div class="linha" style="margin-bottom:12px">
+        <div class="campo" style="margin-bottom:8px"><strong>Status:</strong> ${etiqueta(mov.status)}</div>
+        <div class="campo" style="margin-bottom:8px"><strong>Data/Hora:</strong> ${esc(dataHora(mov.data_hora))}</div>
+        <div class="campo" style="margin-bottom:8px"><strong>Local:</strong> ${esc(nomeLocal(mov.portaria_id ?? mov.destino_id) ?? "—")}</div>
+      </div>
+      ${mov.observacoes ? `<p style="margin:8px 0 0"><strong>Observações:</strong> ${esc(mov.observacoes)}</p>` : ""}
+    </div>
+
+    ${vist ? `
+      <div class="cartao" style="margin-bottom:0;box-shadow:none;background:var(--surface-2)">
+        <h3 style="margin-top:0;font-size:15px;font-weight:700">Vistoria Realizada</h3>
+        <div class="linha">
+          <div class="campo" style="margin-bottom:8px"><strong>KM:</strong> ${esc(vist.km ?? "Não informado")}</div>
+          <div class="campo" style="margin-bottom:8px"><strong>Combustível:</strong> ${esc(vist.nivel_combustivel ?? "—")}</div>
+        </div>
+        ${vist.observacoes ? `<p style="margin:4px 0 0"><strong>Obs. Vistoria:</strong> ${esc(vist.observacoes)}</p>` : ""}
+        ${fotosHtml}
+      </div>
+    ` : '<p style="color:var(--text-muted);font-size:13px;margin:0">Nenhuma vistoria registrada para esta movimentação.</p>'}
+  `;
+}
+
 // =====================================================================
 // MOVIMENTAÇÕES
 // =====================================================================
@@ -201,8 +304,17 @@ async function movimentacoes(alvo, estado) {
   const naFila = await fila.listarFila();
   const nomeLocal = mapaLocais(estado);
 
-  const opcoesVeiculo = (estado.veiculos ?? []).map((v) =>
-    `<option value="${esc(v.id)}">${esc(v.cod_veiculo)} · ${esc(v.placa ?? "sem placa")} · ${esc(v.modelo ?? "")}</option>`).join("");
+  const formatarOpcaoVeiculo = (v) => {
+    const placaStr = v.placa ? esc(v.placa) : "SEM PLACA";
+    const modeloStr = v.modelo ? esc(v.modelo) : "Sem modelo";
+    const chassiStr = v.chassi ? ` · Chassi: ${esc(v.chassi)}` : "";
+    const codStr = ` (Cód: ${esc(v.cod_veiculo)})`;
+    return `${placaStr} — ${modeloStr}${chassiStr}${codStr}`;
+  };
+
+  const renderOpcoesVeiculo = (veicLista) =>
+    (veicLista ?? []).map((v) => `<option value="${esc(v.id)}">${formatarOpcaoVeiculo(v)}</option>`).join("");
+
   const opcoesPortaria = (estado.portarias ?? []).map((p) =>
     `<option value="${esc(p.id)}"${p.exige_vistoria ? ' data-vistoria="1"' : ""}>${esc(p.nome)}${p.exige_vistoria ? " (exige vistoria)" : ""}</option>`).join("");
   const opcoesDestino = (estado.destinos ?? []).map((d) =>
@@ -214,9 +326,11 @@ async function movimentacoes(alvo, estado) {
     <section class="cartao">
       <h2 style="margin-top:0">Registrar movimentação</h2>
       <div class="linha">
-        <div class="campo">
-          <label for="mv-veiculo">Veículo</label>
-          <select id="mv-veiculo">${opcoesVeiculo}</select>
+        <div class="campo campo-veiculo-busca" style="flex:2 1 320px">
+          <label for="mv-busca-veiculo">Pesquisar Veículo (Placa, Chassi ou Modelo)</label>
+          <input id="mv-busca-veiculo" type="search" placeholder="Digite a Placa, Chassi ou Modelo..." autocomplete="off">
+          <select id="mv-veiculo" style="margin-top:6px">${renderOpcoesVeiculo(estado.veiculos)}</select>
+          <span class="busca-dica" id="mv-busca-qtd">${(estado.veiculos ?? []).length} veículo(s) cadastrado(s)</span>
         </div>
         <div class="campo">
           <label for="mv-tipo">Tipo</label>
@@ -264,6 +378,16 @@ async function movimentacoes(alvo, estado) {
   };
   $("#mv-tipo").addEventListener("change", trocarCampos);
   trocarCampos();
+
+  $("#mv-busca-veiculo").addEventListener("input", (e) => {
+    const t = e.target.value.trim().toLowerCase();
+    const filtrados = (estado.veiculos ?? []).filter((v) =>
+      !t || [v.placa, v.chassi, v.modelo, v.cod_veiculo, v.marca]
+        .some((c) => (c ?? "").toLowerCase().includes(t))
+    );
+    $("#mv-veiculo").innerHTML = renderOpcoesVeiculo(filtrados);
+    $("#mv-busca-qtd").textContent = `${filtrados.length} veículo(s) encontrado(s)`;
+  });
 
   $("#btn-registrar").addEventListener("click", (e) => comBotao(e.currentTarget, async () => {
     const tipo = $("#mv-tipo").value;
@@ -313,7 +437,7 @@ async function movimentacoes(alvo, estado) {
       recarregar(true);
     })));
 
-  ligarAcoesMovimentacao(alvo);
+  ligarAcoesMovimentacao(alvo, estado, nomeLocal);
 }
 
 // =====================================================================
@@ -470,8 +594,7 @@ async function veiculos(alvo, estado) {
       <button class="primario auto" id="btn-salvar-veiculo">Salvar veículo</button>
     </details>` : ""}
 
-    <div id="lista-veiculos">${esqueleto(5)}</div>
-    <div id="historico"></div>`;
+    <div id="lista-veiculos">${esqueleto(5)}</div>`;
 
   const desenhar = (termo = "") => {
     const t = termo.trim().toLowerCase();
@@ -493,16 +616,10 @@ async function veiculos(alvo, estado) {
                 <td><button class="secundario auto" data-historico="${esc(v.id)}">Histórico</button></td>
             </tr>`).join("")}</tbody></table></div>`;
 
-    $$("[data-historico]").forEach((b) => b.addEventListener("click", async (e) => {
+    $$("[data-historico]").forEach((b) => b.addEventListener("click", (e) => {
       const id = e.currentTarget.dataset.historico;
-      const caixa = $("#historico");
-      caixa.innerHTML = `<h2>Histórico do veículo</h2>${esqueleto(3)}`;
-      const { dados } = await api.listarMovimentacoes({ veiculo_id: id });
-      caixa.innerHTML = `<h2>Histórico do veículo</h2>` +
-        (dados.length === 0 ? vazio("Nenhuma movimentação para este veículo.")
-                            : tabelaMovimentacoes(dados, estado, nomeLocal));
-      ligarAcoesMovimentacao(caixa);
-      caixa.scrollIntoView({ behavior: "smooth", block: "start" });
+      const veiculo = (estado.veiculos ?? []).find((v) => v.id === id);
+      abrirModalHistoricoVeiculo(veiculo, estado, nomeLocal);
     }));
   };
 
