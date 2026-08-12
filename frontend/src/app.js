@@ -140,11 +140,13 @@ async function carregarBase() {
 async function entrarNoApp() {
   estado.perfil = await api.perfilAtual();
   if (!estado.perfil) {
+    document.body.dataset.autenticado = "false";
     avisar("Seu usuário não tem perfil ativo. Procure o administrador.", "erro", 9000);
     await sb.auth.signOut();
     return mostrarLogin();
   }
 
+  document.body.dataset.autenticado = "true";
   $("#topo").hidden = false;
   $("#nav").hidden = window.innerWidth <= 800;
   $$("[data-master]").forEach((el) => { el.hidden = estado.perfil.papel !== "MASTER"; });
@@ -157,6 +159,7 @@ async function entrarNoApp() {
 }
 
 function mostrarLogin() {
+  document.body.dataset.autenticado = "false";
   $("#topo").hidden = true;
   $("#nav").hidden = true;
   telaLogin($("#conteudo"));
