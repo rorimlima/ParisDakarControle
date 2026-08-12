@@ -68,7 +68,7 @@ async function comCache(chave, consulta) {
 
 export const listarVeiculos = () => comCache("veiculos", () =>
   sb.from("veiculos")
-    .select("id, cod_veiculo, placa, modelo, marca, cor, ano_fabricacao, ano_modelo, status, localizacao_atual, localizacao_tipo")
+    .select("id, cod_veiculo, placa, modelo, marca, cor, ano_fabricacao, ano_modelo, status, localizacao_atual, localizacao_tipo, km_entrega, data_entrega, ultima_entrega_id")
     .eq("ativo", true).order("cod_veiculo").limit(1000));
 
 export const listarPortarias = () => comCache("portarias", () =>
@@ -417,3 +417,29 @@ export async function excluirUsuario(id) {
   if (error) throw new ErroApi(error.code ?? "EXCLUIR_ERRO", "Falha ao excluir usuário: " + error.message, 500);
   return true;
 }
+
+export async function registrarEntregaVeiculo({
+  veiculo_id, km_entrega, data_hora_entrega, entregador_id,
+  entregador_nome, recebedor_nome, recebedor_doc, assinatura_url, observacoes
+}) {
+  const { data, error } = await sb.rpc("registrar_entrega_veiculo", {
+    p_veiculo_id: veiculo_id,
+    p_km_entrega: Number(km_entrega),
+    p_data_hora_entrega: data_hora_entrega || new Date().toISOString(),
+    p_entregador_id: entregador_id || null,
+    p_entregador_nome: entregador_nome || null,
+    p_recebedor_nome: recebedor_nome,
+    p_recebedor_doc: recebedor_doc || null,
+    p_assinatura_url: assinatura_url || null,
+    p_observacoes: observacoes || null,
+  });
+  if (error) throw new ErroApi(error.code ?? "ENTREGA_ERRO", "Falha ao registrar entrega: " + error.message, 400);
+  return data;
+}
+
+export async function obterEntregaVeiculo(entregaId) {
+  const { data, error } = await sb.from("entregas_veiculo").select("*").eq("id", entregaId).maybeSingle();
+  if (error) throw new ErroApi(error.code ?? "BUSCA_ERRO", "Falha ao obter dados da entrega: " + error.message, 400);
+  return data;
+}
+

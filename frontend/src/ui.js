@@ -57,6 +57,7 @@ export function dataHora(iso) {
 export const ROTULO_STATUS = {
   DISPONIVEL: "Disponível", EM_TRANSITO: "Em trânsito",
   NA_PORTARIA: "Na portaria", NO_DESTINO: "No destino",
+  INATIVO: "Inativo (Entregue)",
   PENDENTE: "Pendente", APROVADO: "Aprovado", REJEITADO: "Rejeitado",
 };
 

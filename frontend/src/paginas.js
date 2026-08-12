@@ -188,23 +188,25 @@ function tabelaMovimentacoes(lista, estado, nomeLocal) {
   const podeDecidir = (m) => m.usuario_id === estado.perfil?.id || estado.perfil?.papel === "MASTER";
   const ehMaster = estado.perfil?.papel === "MASTER";
   return `<div class="tabela-rolagem"><table>
-    <thead><tr><th>Veículo</th><th>Tipo</th><th>Local</th><th>Data/hora</th><th>Status</th><th>Ações</th></tr></thead>
+    <thead><tr><th>Veículo</th><th>Tipo</th><th>Local</th><th>Data/hora</th><th>Status</th><th class="acoes">Ações</th></tr></thead>
     <tbody>${lista.map((m) => {
       const v = veiculo.get(m.veiculo_id);
       return `<tr>
-        <td>${esc(v ? `${v.cod_veiculo} · ${v.placa ?? v.modelo ?? ""}` : m.veiculo_id.slice(0, 8))}</td>
-        <td>${esc(ROTULO_TIPO[m.tipo] ?? m.tipo)}</td>
-        <td>${esc(nomeLocal(m.portaria_id ?? m.destino_id) ?? "—")}</td>
-        <td>${esc(dataHora(m.data_hora))}</td>
+        <td class="sem-quebra"><strong>${esc(v ? `${v.cod_veiculo}` : m.veiculo_id.slice(0, 8))}</strong> ${v ? `<span style="font-size:12px;color:var(--text-muted)">(${esc(v.placa ?? v.modelo ?? "")})</span>` : ""}</td>
+        <td class="sem-quebra">${esc(ROTULO_TIPO[m.tipo] ?? m.tipo)}</td>
+        <td class="sem-quebra">${esc(nomeLocal(m.portaria_id ?? m.destino_id) ?? "—")}</td>
+        <td class="sem-quebra">${esc(dataHora(m.data_hora))}</td>
         <td>${etiqueta(m.status)}</td>
-        <td style="white-space:nowrap">
-          <button class="secundario auto" data-detalhes="${esc(m.id)}">Detalhes</button>
-          ${m.status === "PENDENTE" && podeDecidir(m) ? `
-            <button class="secundario auto" data-vistoria="${esc(m.id)}">Vistoria</button>
-            <button class="primario auto" data-decidir="${esc(m.id)}" data-decisao="APROVADO">Aprovar</button>
-            <button class="perigo auto" data-decidir="${esc(m.id)}" data-decisao="REJEITADO">Rejeitar</button>`
-            : ""}
-          ${ehMaster ? `<button class="perigo auto" data-excluir-movimentacao="${esc(m.id)}">Excluir</button>` : ""}
+        <td class="acoes">
+          <div class="tabela-acoes">
+            <button class="secundario" data-detalhes="${esc(m.id)}">Detalhes</button>
+            ${m.status === "PENDENTE" && podeDecidir(m) ? `
+              <button class="secundario" data-vistoria="${esc(m.id)}">Vistoria</button>
+              <button class="primario" data-decidir="${esc(m.id)}" data-decisao="APROVADO">Aprovar</button>
+              <button class="perigo" data-decidir="${esc(m.id)}" data-decisao="REJEITADO">Rejeitar</button>`
+              : ""}
+            ${ehMaster ? `<button class="perigo" data-excluir-movimentacao="${esc(m.id)}">Excluir</button>` : ""}
+          </div>
         </td></tr>`;
     }).join("")}</tbody></table></div>`;
 }
@@ -278,12 +280,33 @@ async function abrirModalHistoricoVeiculo(veiculo, estado, nomeLocal) {
   }));
 
   const caixa = overlay.querySelector("#modal-historico-conteudo");
+  let htmlEntrega = "";
+  if (veiculo.ultima_entrega_id) {
+    try {
+      const entrega = await api.obterEntregaVeiculo(veiculo.ultima_entrega_id);
+      if (entrega) {
+        htmlEntrega = `
+          <div class="aviso" data-t="info" style="margin-bottom:14px; text-align:left;">
+            <div style="font-weight:700; margin-bottom:4px;">🚚 Registro de Entrega Realizada (Status: INATIVO)</div>
+            <div><strong>Data/Hora:</strong> ${esc(dataHora(entrega.data_hora_entrega))} | <strong>KM:</strong> ${esc(entrega.km_entrega)}</div>
+            <div><strong>Entregador:</strong> ${esc(entrega.entregador_nome)} | <strong>Recebedor:</strong> ${esc(entrega.recebedor_nome)}${entrega.recebedor_doc ? ` (${esc(entrega.recebedor_doc)})` : ""}</div>
+            ${entrega.observacoes ? `<div><strong>Obs:</strong> ${esc(entrega.observacoes)}</div>` : ""}
+            ${entrega.assinatura_url ? `
+              <div style="margin-top:8px;">
+                <strong>Assinatura Digital do Recebedor:</strong><br>
+                <img src="${esc(entrega.assinatura_url)}" alt="Assinatura" style="max-height:80px; border:1px solid #cbd5e1; background:#ffffff; border-radius:6px; padding:4px; margin-top:4px;">
+              </div>` : ""}
+          </div>`;
+      }
+    } catch (_) {}
+  }
+
   const { dados } = await api.listarMovimentacoes({ veiculo_id: veiculo.id });
 
   if (dados.length === 0) {
-    caixa.innerHTML = vazio("Nenhuma movimentação registrada para este veículo.");
+    caixa.innerHTML = htmlEntrega + vazio("Nenhuma movimentação registrada para este veículo.");
   } else {
-    caixa.innerHTML = tabelaMovimentacoes(dados, estado, nomeLocal);
+    caixa.innerHTML = htmlEntrega + tabelaMovimentacoes(dados, estado, nomeLocal);
     ligarAcoesMovimentacao(caixa, estado, nomeLocal);
   }
 }
@@ -672,22 +695,30 @@ async function veiculos(alvo, estado) {
     $("#lista-veiculos").innerHTML = lista.length === 0
       ? vazio(t ? "Nenhum veículo encontrado para esta busca." : "Nenhum veículo cadastrado.")
       : `<div class="tabela-rolagem"><table>
-          <thead><tr><th>Código</th><th>Placa</th><th>Marca</th><th>Modelo</th><th>Cor</th>
-                     <th class="num">Ano</th><th>Status</th><th>Local</th><th></th></tr></thead>
+          <thead><tr>
+            <th>Código</th><th>Placa</th><th>Marca</th><th>Modelo</th><th>Cor</th>
+            <th class="num">Ano</th><th>Status</th><th>Local</th><th class="acoes">Ações</th>
+          </tr></thead>
           <tbody>${lista.slice(0, 300).map((v) => `
-            <tr><td>${esc(v.cod_veiculo)}</td><td>${esc(v.placa ?? "—")}</td>
-                <td>${esc(v.marca ?? "—")}</td><td>${esc(v.modelo ?? "—")}</td>
-                <td>${esc(v.cor ?? "—")}</td>
-                <td class="num">${esc(v.ano_fabricacao ?? "—")}/${esc(v.ano_modelo ?? "—")}</td>
-                <td>${etiqueta(v.status)}</td>
-                <td>${esc(nomeLocal(v.localizacao_atual) ?? "—")}</td>
-                <td style="white-space:nowrap">
-                  <button class="secundario auto" data-historico="${esc(v.id)}">Histórico</button>
+            <tr>
+              <td class="sem-quebra"><strong>${esc(v.cod_veiculo)}</strong></td>
+              <td class="sem-quebra">${esc(v.placa ?? "—")}</td>
+              <td class="sem-quebra">${esc(v.marca ?? "—")}</td>
+              <td>${esc(v.modelo ?? "—")}</td>
+              <td class="sem-quebra">${esc(v.cor ?? "—")}</td>
+              <td class="num sem-quebra">${esc(v.ano_fabricacao ?? "—")}/${esc(v.ano_modelo ?? "—")}</td>
+              <td>${etiqueta(v.status)}</td>
+              <td class="sem-quebra">${esc(nomeLocal(v.localizacao_atual) ?? "—")}</td>
+              <td class="acoes">
+                <div class="tabela-acoes">
+                  <button class="secundario" data-historico="${esc(v.id)}">Histórico</button>
+                  <button class="secundario" data-entrega="${esc(v.id)}">Entrega</button>
                   ${ehMaster ? `
-                    <button class="secundario auto" data-editar="${esc(v.id)}">Editar</button>
-                    <button class="perigo auto" data-excluir-veiculo="${esc(v.id)}" data-cod="${esc(v.cod_veiculo)}">Excluir</button>
+                    <button class="secundario" data-editar="${esc(v.id)}">Editar</button>
+                    <button class="perigo" data-excluir-veiculo="${esc(v.id)}" data-cod="${esc(v.cod_veiculo)}">Excluir</button>
                   ` : ""}
-                </td>
+                </div>
+              </td>
             </tr>`).join("")}</tbody></table></div>`;
 
     $$("[data-historico]").forEach((b) => b.addEventListener("click", (e) => {
@@ -696,10 +727,16 @@ async function veiculos(alvo, estado) {
       abrirModalHistoricoVeiculo(veiculo, estado, nomeLocal);
     }));
 
+    $$("[data-entrega]").forEach((b) => b.addEventListener("click", (e) => {
+      const id = e.currentTarget.dataset.entrega;
+      const veiculo = (estado.veiculos ?? []).find((v) => v.id === id);
+      abrirModalRegistrarEntrega(veiculo, estado);
+    }));
+
     $$("[data-editar]").forEach((b) => b.addEventListener("click", (e) => {
       const id = e.currentTarget.dataset.editar;
       const veiculo = (estado.veiculos ?? []).find((v) => v.id === id);
-      abrirModalEditarVeiculo(veiculo);
+      abrirModalEditarVeiculo(veiculo, estado);
     }));
 
     $$("[data-excluir-veiculo]").forEach((b) => b.addEventListener("click", (e) =>
@@ -777,13 +814,20 @@ async function veiculos(alvo, estado) {
   }
 }
 
-function abrirModalEditarVeiculo(veiculo) {
+function abrirModalEditarVeiculo(veiculo, estado) {
   if (!veiculo) return;
   const campos = [
     ["cod_veiculo", "Código *", "text"], ["placa", "Placa", "text"], ["chassi", "Chassi", "text"],
     ["marca", "Marca/Família", "text"], ["modelo", "Modelo", "text"], ["cor", "Cor", "text"],
     ["ano_fabricacao", "Ano fabricação", "number"], ["ano_modelo", "Ano modelo", "number"],
   ];
+
+  const avisoInativo = veiculo.status === "INATIVO" ? `
+    <div class="aviso" data-t="alerta" style="margin-top:14px; grid-column:1/-1;">
+      <strong>Veículo INATIVO (Entregue)</strong><br>
+      Entregue em ${esc(dataHora(veiculo.data_entrega))} — KM de entrega: ${esc(veiculo.km_entrega ?? "—")}<br>
+      <em>O veículo permanecerá inativo até que seja registrada uma nova Entrada na Portaria.</em>
+    </div>` : "";
 
   const overlay = abrirModal({
     titulo: `Editar veículo`,
@@ -792,21 +836,26 @@ function abrirModalEditarVeiculo(veiculo) {
         ${campos.map(([id, r, t]) => `<div class="campo">
             <label for="ed-${id}">${esc(r)}</label>
             <input id="ed-${id}" type="${t}" autocomplete="off" value="${esc(veiculo[id] ?? "")}"></div>`).join("")}
+        ${avisoInativo}
       </div>`,
     acoesHtml: `
+      <button class="perigo auto" id="btn-modal-entrega" style="margin-right:auto;">Entrega (Registrar)</button>
       <button class="secundario auto" data-fechar-modal>Cancelar</button>
       <button class="primario auto" id="btn-salvar-edicao">Salvar alterações</button>`,
   });
 
   overlay.querySelector("[data-fechar-modal]")?.addEventListener("click", fecharModal);
 
+  overlay.querySelector("#btn-modal-entrega")?.addEventListener("click", () => {
+    fecharModal();
+    abrirModalRegistrarEntrega(veiculo, estado);
+  });
+
   overlay.querySelector("#btn-salvar-edicao").addEventListener("click", (e) => comBotao(e.currentTarget, async () => {
     const val = (id) => overlay.querySelector(`#ed-${id}`).value.trim();
     const cod = val("cod_veiculo");
     if (!cod) return avisar("O código do veículo é obrigatório.", "erro");
 
-    // Allowlist de campos editáveis: nunca status/localizacao_atual por aqui,
-    // isso só muda via aprovação de movimentação.
     const registro = {
       cod_veiculo: cod,
       placa: val("placa").toUpperCase().replace(/[^A-Z0-9]/g, "") || null,
@@ -826,6 +875,188 @@ function abrirModalEditarVeiculo(veiculo) {
     avisar("Veículo atualizado.", "ok");
     fecharModal();
     recarregar(true);
+  }));
+}
+
+function agoraLocalISO() {
+  const d = new Date();
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 16);
+}
+
+async function abrirModalRegistrarEntrega(veiculo, estado) {
+  if (!veiculo) return;
+
+  let usuarios = [];
+  try {
+    const { data } = await api.listarUsuarios();
+    usuarios = (data ?? []).filter((u) => u.ativo);
+  } catch (_) {
+    usuarios = estado?.perfil ? [estado.perfil] : [];
+  }
+
+  const idLogado = estado?.perfil?.id ?? "";
+  const opcoesUsuarios = usuarios.map((u) => `
+    <option value="${esc(u.id)}" data-nome="${esc(u.nome)}" ${u.id === idLogado ? "selected" : ""}>
+      ${esc(u.nome)} (${u.papel === "MASTER" ? "Master" : "Manutenção"})
+    </option>
+  `).join("");
+
+  const overlay = abrirModal({
+    titulo: `Registrar Entrega de Veículo`,
+    sub: `Cód: ${esc(veiculo.cod_veiculo)} — Placa: ${esc(veiculo.placa ?? "Sem placa")} | ${esc(veiculo.modelo ?? "")}`,
+    conteudoHtml: `
+      <form id="form-entrega-veiculo" onsubmit="return false;" style="display:flex; flex-direction:column; gap:12px;">
+        <div class="aviso" data-t="info">
+          Ao registrar a entrega, o veículo ficará com status <strong>INATIVO (Entregue)</strong> até que seja efetuada uma nova <strong>Entrada na Portaria</strong>.
+        </div>
+
+        <div class="linha">
+          <div class="campo">
+            <label for="ent-data_hora">Data e Hora da Entrega *</label>
+            <input id="ent-data_hora" type="datetime-local" value="${agoraLocalISO()}" required>
+          </div>
+          <div class="campo">
+            <label for="ent-km">KM de Entrega *</label>
+            <input id="ent-km" type="number" min="0" step="1" placeholder="Ex: 45200" value="${esc(veiculo.km_entrega ?? "")}" required>
+          </div>
+        </div>
+
+        <div class="linha">
+          <div class="campo">
+            <label for="ent-entregador">Entregador (Quem Entregou) *</label>
+            <select id="ent-entregador" required>
+              ${opcoesUsuarios || `<option value="${esc(idLogado)}" data-nome="${esc(estado?.perfil?.nome ?? "Responsável")}">${esc(estado?.perfil?.nome ?? "Responsável da Manutenção")}</option>`}
+            </select>
+          </div>
+          <div class="campo">
+            <label for="ent-recebedor">Recebedor (Quem Recebeu) *</label>
+            <input id="ent-recebedor" type="text" placeholder="Nome completo do recebedor" required autocomplete="off">
+          </div>
+        </div>
+
+        <div class="linha">
+          <div class="campo">
+            <label for="ent-recebedor_doc">Documento do Recebedor (CPF/RG)</label>
+            <input id="ent-recebedor_doc" type="text" placeholder="Opcional" autocomplete="off">
+          </div>
+          <div class="campo">
+            <label for="ent-obs">Observações</label>
+            <input id="ent-obs" type="text" placeholder="Anotações adicionais (opcional)" autocomplete="off">
+          </div>
+        </div>
+
+        <div class="campo" style="grid-column: 1 / -1;">
+          <label>Assinatura Digital do Recebedor *</label>
+          <div style="border: 2px dashed #cbd5e1; border-radius: 8px; background: #ffffff; position: relative; width: 100%; box-sizing: border-box; overflow: hidden; touch-action: none;">
+            <canvas id="canvas-assinatura" width="560" height="180" style="touch-action: none; width: 100%; height: 180px; display: block; cursor: crosshair; background: #ffffff;"></canvas>
+            <button type="button" class="secundario auto" id="btn-limpar-assinatura" style="position: absolute; bottom: 8px; right: 8px; font-size: 12px; padding: 4px 10px; background: rgba(255,255,255,0.9); border: 1px solid #cbd5e1; cursor: pointer;">
+              Limpar Assinatura
+            </button>
+          </div>
+          <small style="color: var(--texto-sec, #64748b); display: block; margin-top: 4px;">Assine dentro do quadro acima usando o mouse ou a tela sensível ao toque.</small>
+        </div>
+      </form>
+    `,
+    acoesHtml: `
+      <button class="secundario auto" data-fechar-modal>Cancelar</button>
+      <button class="primario auto" id="btn-confirmar-entrega">Confirmar Entrega</button>
+    `,
+  });
+
+  overlay.querySelector("[data-fechar-modal]")?.addEventListener("click", fecharModal);
+
+  const canvas = overlay.querySelector("#canvas-assinatura");
+  const ctx = canvas.getContext("2d");
+  let desenhando = false;
+  let temAssinatura = false;
+
+  ctx.lineWidth = 2.5;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.strokeStyle = "#0f172a";
+
+  function getPos(e) {
+    const rect = canvas.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    return {
+      x: (clientX - rect.left) * (canvas.width / rect.width),
+      y: (clientY - rect.top) * (canvas.height / rect.height),
+    };
+  }
+
+  function iniciarDesenho(e) {
+    desenhando = true;
+    const pos = getPos(e);
+    ctx.beginPath();
+    ctx.moveTo(pos.x, pos.y);
+    if (e.cancelable) e.preventDefault();
+  }
+
+  function desenhar(e) {
+    if (!desenhando) return;
+    const pos = getPos(e);
+    ctx.lineTo(pos.x, pos.y);
+    ctx.stroke();
+    temAssinatura = true;
+    if (e.cancelable) e.preventDefault();
+  }
+
+  function pararDesenho() {
+    desenhando = false;
+  }
+
+  canvas.addEventListener("mousedown", iniciarDesenho);
+  canvas.addEventListener("mousemove", desenhar);
+  canvas.addEventListener("mouseup", pararDesenho);
+  canvas.addEventListener("mouseleave", pararDesenho);
+
+  canvas.addEventListener("touchstart", iniciarDesenho, { passive: false });
+  canvas.addEventListener("touchmove", desenhar, { passive: false });
+  canvas.addEventListener("touchend", pararDesenho);
+
+  overlay.querySelector("#btn-limpar-assinatura").addEventListener("click", () => {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    temAssinatura = false;
+  });
+
+  overlay.querySelector("#btn-confirmar-entrega").addEventListener("click", (e) => comBotao(e.currentTarget, async () => {
+    const dataHoraVal = overlay.querySelector("#ent-data_hora").value;
+    const kmVal = overlay.querySelector("#ent-km").value;
+    const selectEntregador = overlay.querySelector("#ent-entregador");
+    const entregadorIdVal = selectEntregador.value;
+    const optSel = selectEntregador.options[selectEntregador.selectedIndex];
+    const entregadorNomeVal = optSel?.dataset?.nome || optSel?.text || "Responsável";
+    const recebedorVal = overlay.querySelector("#ent-recebedor").value.trim();
+    const recebedorDocVal = overlay.querySelector("#ent-recebedor_doc").value.trim();
+    const obsVal = overlay.querySelector("#ent-obs").value.trim();
+
+    if (!kmVal || Number(kmVal) < 0) return avisar("Informe um valor válido para o KM de entrega.", "erro");
+    if (!recebedorVal) return avisar("Informe o nome do recebedor.", "erro");
+    if (!temAssinatura) return avisar("Por favor, colha a assinatura digital do recebedor.", "erro");
+
+    const assinaturaDataUrl = canvas.toDataURL("image/png");
+
+    try {
+      await api.registrarEntregaVeiculo({
+        veiculo_id: veiculo.id,
+        km_entrega: Number(kmVal),
+        data_hora_entrega: dataHoraVal ? new Date(dataHoraVal).toISOString() : new Date().toISOString(),
+        entregador_id: entregadorIdVal || null,
+        entregador_nome: entregadorNomeVal,
+        recebedor_nome: recebedorVal,
+        recebedor_doc: recebedorDocVal || null,
+        assinatura_url: assinaturaDataUrl,
+        observacoes: obsVal || null,
+      });
+
+      avisar(`Entrega do veículo ${veiculo.cod_veiculo} registrada com sucesso. Veículo marcado como INATIVO.`, "ok");
+      fecharModal();
+      recarregar(true);
+    } catch (err) {
+      avisar(err.message, "erro", 9000);
+    }
   }));
 }
 
