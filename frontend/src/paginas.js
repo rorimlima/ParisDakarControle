@@ -777,6 +777,7 @@ async function importar(alvo) {
     if (!navigator.onLine) return avisar("A importação exige conexão.", "erro");
 
     $("#relatorio").innerHTML = esqueleto(3);
+    const arrayBuffer = await arquivo.arrayBuffer();
     const base64 = await new Promise((res, rej) => {
       const fr = new FileReader();
       fr.onload = () => res(String(fr.result).split(",")[1]);
@@ -785,7 +786,7 @@ async function importar(alvo) {
     });
 
     try {
-      const r = await api.importarPlanilha(base64, arquivo.name);
+      const r = await api.importarPlanilha(base64, arquivo.name, arrayBuffer);
       $("#relatorio").innerHTML = `
         <h2>Relatório da importação</h2>
         <div class="grade">
