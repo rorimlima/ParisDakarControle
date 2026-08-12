@@ -252,8 +252,9 @@ async function abrirModalHistoricoVeiculo(veiculo, estado, nomeLocal) {
   const cod = esc(veiculo.cod_veiculo);
   const placa = veiculo.placa ? esc(veiculo.placa) : "Sem placa";
   const modelo = veiculo.modelo ? esc(veiculo.modelo) : "Sem modelo";
+  const marca = veiculo.marca ? ` · Marca: ${esc(veiculo.marca)}` : "";
   const chassi = veiculo.chassi ? ` · Chassi: ${esc(veiculo.chassi)}` : "";
-  const sub = `${placa} · ${modelo}${chassi} | Local Atual: ${esc(nomeLocal(veiculo.localizacao_atual) ?? "—")}`;
+  const sub = `${placa} · ${modelo}${marca}${chassi} | Local Atual: ${esc(nomeLocal(veiculo.localizacao_atual) ?? "—")}`;
   const ehMaster = estado.perfil?.papel === "MASTER";
 
   const overlay = abrirModal({
@@ -696,14 +697,13 @@ async function veiculos(alvo, estado) {
       ? vazio(t ? "Nenhum veículo encontrado para esta busca." : "Nenhum veículo cadastrado.")
       : `<div class="tabela-rolagem"><table>
           <thead><tr>
-            <th>Código</th><th>Placa</th><th>Marca</th><th>Modelo</th><th>Cor</th>
+            <th>Código</th><th>Placa</th><th>Modelo</th><th>Cor</th>
             <th class="num">Ano</th><th>Status</th><th>Local</th><th class="acoes">Ações</th>
           </tr></thead>
           <tbody>${lista.slice(0, 300).map((v) => `
             <tr>
               <td class="sem-quebra"><strong>${esc(v.cod_veiculo)}</strong></td>
               <td class="sem-quebra">${esc(v.placa ?? "—")}</td>
-              <td class="sem-quebra">${esc(v.marca ?? "—")}</td>
               <td>${esc(v.modelo ?? "—")}</td>
               <td class="sem-quebra">${esc(v.cor ?? "—")}</td>
               <td class="num sem-quebra">${esc(v.ano_fabricacao ?? "—")}/${esc(v.ano_modelo ?? "—")}</td>
