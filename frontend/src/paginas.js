@@ -186,6 +186,7 @@ function mapaLocais(estado) {
 function tabelaMovimentacoes(lista, estado, nomeLocal) {
   const veiculo = new Map((estado.veiculos ?? []).map((v) => [v.id, v]));
   const podeDecidir = (m) => m.usuario_id === estado.perfil?.id || estado.perfil?.papel === "MASTER";
+  const ehMaster = estado.perfil?.papel === "MASTER";
   return `<div class="tabela-rolagem"><table>
     <thead><tr><th>Veículo</th><th>Tipo</th><th>Local</th><th>Data/hora</th><th>Status</th><th>Ações</th></tr></thead>
     <tbody>${lista.map((m) => {
@@ -196,13 +197,14 @@ function tabelaMovimentacoes(lista, estado, nomeLocal) {
         <td>${esc(nomeLocal(m.portaria_id ?? m.destino_id) ?? "—")}</td>
         <td>${esc(dataHora(m.data_hora))}</td>
         <td>${etiqueta(m.status)}</td>
-        <td>
+        <td style="white-space:nowrap">
           <button class="secundario auto" data-detalhes="${esc(m.id)}">Detalhes</button>
           ${m.status === "PENDENTE" && podeDecidir(m) ? `
             <button class="secundario auto" data-vistoria="${esc(m.id)}">Vistoria</button>
             <button class="primario auto" data-decidir="${esc(m.id)}" data-decisao="APROVADO">Aprovar</button>
             <button class="perigo auto" data-decidir="${esc(m.id)}" data-decisao="REJEITADO">Rejeitar</button>`
             : ""}
+          ${ehMaster ? `<button class="perigo auto" data-excluir-movimentacao="${esc(m.id)}">Excluir</button>` : ""}
         </td></tr>`;
     }).join("")}</tbody></table></div>`;
 }
@@ -227,6 +229,20 @@ function ligarAcoesMovimentacao(alvo, estado, nomeLocal) {
 
   $$("[data-vistoria]", alvo).forEach((b) =>
     b.addEventListener("click", (e) => { location.hash = `#/vistoria/${e.currentTarget.dataset.vistoria}`; }));
+
+  $$("[data-excluir-movimentacao]", alvo).forEach((b) =>
+    b.addEventListener("click", (e) => comBotao(e.currentTarget, async () => {
+      const id = e.currentTarget.dataset.excluirMovimentacao;
+      if (!confirm("Excluir DEFINITIVAMENTE esta movimentação do banco de dados? Esta ação é irreversível.")) return;
+      try {
+        await api.excluirMovimentacao(id);
+        avisar("Movimentação excluída do banco de dados.", "ok");
+        fecharModal();
+        recarregar(true);
+      } catch (err) {
+        avisar(err.message, "erro", 9000);
+      }
+    })));
 }
 
 async function abrirModalHistoricoVeiculo(veiculo, estado, nomeLocal) {
@@ -236,15 +252,30 @@ async function abrirModalHistoricoVeiculo(veiculo, estado, nomeLocal) {
   const modelo = veiculo.modelo ? esc(veiculo.modelo) : "Sem modelo";
   const chassi = veiculo.chassi ? ` · Chassi: ${esc(veiculo.chassi)}` : "";
   const sub = `${placa} · ${modelo}${chassi} | Local Atual: ${esc(nomeLocal(veiculo.localizacao_atual) ?? "—")}`;
+  const ehMaster = estado.perfil?.papel === "MASTER";
 
   const overlay = abrirModal({
     titulo: `Histórico do Veículo (Cód: ${cod})`,
     sub,
     conteudoHtml: `<div id="modal-historico-conteudo">${esqueleto(3)}</div>`,
-    acoesHtml: `<button class="secundario auto" data-fechar-modal>Fechar</button>`,
+    acoesHtml: `
+      ${ehMaster ? `<button class="perigo auto" id="btn-excluir-veiculo-modal">Excluir Veículo do Banco</button>` : ""}
+      <button class="secundario auto" data-fechar-modal>Fechar</button>`,
   });
 
   overlay.querySelector("[data-fechar-modal]")?.addEventListener("click", fecharModal);
+
+  overlay.querySelector("#btn-excluir-veiculo-modal")?.addEventListener("click", (e) => comBotao(e.currentTarget, async () => {
+    if (!confirm(`Excluir DEFINITIVAMENTE o veículo ${veiculo.cod_veiculo} e todo o seu histórico do banco de dados? Esta ação é IRREVERSÍVEL.`)) return;
+    try {
+      await api.excluirVeiculo(veiculo.id);
+      avisar(`Veículo ${veiculo.cod_veiculo} excluído do banco de dados.`, "ok");
+      fecharModal();
+      recarregar(true);
+    } catch (err) {
+      avisar(err.message, "erro", 9000);
+    }
+  }));
 
   const caixa = overlay.querySelector("#modal-historico-conteudo");
   const { dados } = await api.listarMovimentacoes({ veiculo_id: veiculo.id });
@@ -652,7 +683,10 @@ async function veiculos(alvo, estado) {
                 <td>${esc(nomeLocal(v.localizacao_atual) ?? "—")}</td>
                 <td style="white-space:nowrap">
                   <button class="secundario auto" data-historico="${esc(v.id)}">Histórico</button>
-                  ${ehMaster ? `<button class="secundario auto" data-editar="${esc(v.id)}">Editar</button>` : ""}
+                  ${ehMaster ? `
+                    <button class="secundario auto" data-editar="${esc(v.id)}">Editar</button>
+                    <button class="perigo auto" data-excluir-veiculo="${esc(v.id)}" data-cod="${esc(v.cod_veiculo)}">Excluir</button>
+                  ` : ""}
                 </td>
             </tr>`).join("")}</tbody></table></div>`;
 
@@ -667,6 +701,20 @@ async function veiculos(alvo, estado) {
       const veiculo = (estado.veiculos ?? []).find((v) => v.id === id);
       abrirModalEditarVeiculo(veiculo);
     }));
+
+    $$("[data-excluir-veiculo]").forEach((b) => b.addEventListener("click", (e) =>
+      comBotao(e.currentTarget, async () => {
+        const { excluirVeiculo, cod } = e.currentTarget.dataset;
+        if (!confirm(`Tem certeza que deseja EXCLUIR DEFINITIVAMENTE o veículo ${cod} do banco de dados? Esta ação é IRREVERSÍVEL.`)) return;
+        try {
+          await api.excluirVeiculo(excluirVeiculo);
+          avisar(`Veículo ${cod} excluído do banco de dados.`, "ok");
+          recarregar(true);
+        } catch (err) {
+          avisar(err.message, "erro", 9000);
+        }
+      })
+    ));
   };
 
   desenhar();
@@ -788,12 +836,18 @@ async function cadastros(alvo, estado) {
   const linhasPortarias = (estado.portarias ?? []).map((p) => `
     <tr><td>${esc(p.nome)}</td><td>${esc(p.codigo)}</td>
         <td>${p.exige_vistoria ? "sim" : "não"}</td>
-        <td><button class="perigo auto" data-desativar-portaria="${esc(p.id)}">Desativar</button></td></tr>`).join("");
+        <td style="white-space:nowrap">
+          <button class="secundario auto" data-desativar-portaria="${esc(p.id)}">Desativar</button>
+          <button class="perigo auto" data-excluir-portaria="${esc(p.id)}" data-nome="${esc(p.nome)}">Excluir</button>
+        </td></tr>`).join("");
 
   const linhasDestinos = (estado.destinos ?? []).map((d) => `
     <tr><td>${esc(d.nome)}</td><td>${esc(d.codigo)}</td>
         <td>${esc((estado.portarias ?? []).find((p) => p.id === d.portaria_id)?.nome ?? "—")}</td>
-        <td><button class="perigo auto" data-desativar-destino="${esc(d.id)}">Desativar</button></td></tr>`).join("");
+        <td style="white-space:nowrap">
+          <button class="secundario auto" data-desativar-destino="${esc(d.id)}">Desativar</button>
+          <button class="perigo auto" data-excluir-destino="${esc(d.id)}" data-nome="${esc(d.nome)}">Excluir</button>
+        </td></tr>`).join("");
 
   alvo.innerHTML = `
     <h1>Portarias e destinos</h1>
@@ -869,6 +923,32 @@ async function cadastros(alvo, estado) {
     b.addEventListener("click", (e) => desativar("portarias", e.currentTarget.dataset.desativarPortaria)));
   $$("[data-desativar-destino]").forEach((b) =>
     b.addEventListener("click", (e) => desativar("destinos", e.currentTarget.dataset.desativarDestino)));
+
+  $$("[data-excluir-portaria]").forEach((b) =>
+    b.addEventListener("click", (e) => comBotao(e.currentTarget, async () => {
+      const { excluirPortaria, nome } = e.currentTarget.dataset;
+      if (!confirm(`Excluir DEFINITIVAMENTE a portaria ${nome} do banco de dados?`)) return;
+      try {
+        await api.excluirPortaria(excluirPortaria);
+        avisar(`Portaria ${nome} excluída do banco de dados.`, "ok");
+        location.reload();
+      } catch (err) {
+        avisar(err.message, "erro", 9000);
+      }
+    })));
+
+  $$("[data-excluir-destino]").forEach((b) =>
+    b.addEventListener("click", (e) => comBotao(e.currentTarget, async () => {
+      const { excluirDestino, nome } = e.currentTarget.dataset;
+      if (!confirm(`Excluir DEFINITIVAMENTE o destino ${nome} do banco de dados?`)) return;
+      try {
+        await api.excluirDestino(excluirDestino);
+        avisar(`Destino ${nome} excluído do banco de dados.`, "ok");
+        location.reload();
+      } catch (err) {
+        avisar(err.message, "erro", 9000);
+      }
+    })));
 }
 
 // =====================================================================
@@ -1013,9 +1093,10 @@ async function usuarios(alvo, estado) {
       <tbody>${(lista ?? []).map((u) => `
         <tr><td>${esc(u.nome)}</td><td>${esc(u.papel)}</td><td>${u.ativo ? "sim" : "não"}</td>
             <td>${esc(dataHora(u.criado_em))}</td>
-            <td>${u.id === estado.perfil.id ? "—" : `
+            <td style="white-space:nowrap">${u.id === estado.perfil.id ? "—" : `
               <button class="secundario auto" data-alternar="${esc(u.id)}" data-ativo="${u.ativo}">
-                ${u.ativo ? "Desativar" : "Ativar"}</button>`}</td></tr>`).join("")}
+                ${u.ativo ? "Desativar" : "Ativar"}</button>
+              <button class="perigo auto" data-excluir-usuario="${esc(u.id)}" data-nome="${esc(u.nome)}">Excluir</button>`}</td></tr>`).join("")}
       </tbody></table></div>`;
 
   $("#btn-convidar").addEventListener("click", (e) => comBotao(e.currentTarget, async () => {
@@ -1036,6 +1117,17 @@ async function usuarios(alvo, estado) {
         await api.chamarFuncao("usuarios",
           { acao: ativo === "true" ? "desativar" : "ativar", usuario_id: alternar });
         avisar("Usuário atualizado.", "ok");
+        recarregar();
+      } catch (err) { avisar(err.message, "erro", 9000); }
+    })));
+
+  $$("[data-excluir-usuario]").forEach((b) => b.addEventListener("click", (e) =>
+    comBotao(e.currentTarget, async () => {
+      const { excluirUsuario, nome } = e.currentTarget.dataset;
+      if (!confirm(`Excluir DEFINITIVAMENTE o usuário ${nome} do banco de dados?`)) return;
+      try {
+        await api.excluirUsuario(excluirUsuario);
+        avisar(`Usuário ${nome} excluído do banco de dados.`, "ok");
         recarregar();
       } catch (err) { avisar(err.message, "erro", 9000); }
     })));

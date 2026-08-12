@@ -385,3 +385,35 @@ export async function sincronizar(aoProgresso = () => {}) {
   }
   return { enviados, conflitos, restantes: (await fila.listarFila()).length };
 }
+
+// ------------------------------------------------------------ exclusões reais
+export async function excluirVeiculo(id) {
+  await sb.from("movimentacoes").delete().eq("veiculo_id", id);
+  const { error } = await sb.from("veiculos").delete().eq("id", id);
+  if (error) throw new ErroApi(error.code ?? "EXCLUIR_ERRO", "Falha ao excluir veículo: " + error.message, 500);
+  return true;
+}
+
+export async function excluirMovimentacao(id) {
+  const { error } = await sb.from("movimentacoes").delete().eq("id", id);
+  if (error) throw new ErroApi(error.code ?? "EXCLUIR_ERRO", "Falha ao excluir movimentação: " + error.message, 500);
+  return true;
+}
+
+export async function excluirPortaria(id) {
+  const { error } = await sb.from("portarias").delete().eq("id", id);
+  if (error) throw new ErroApi(error.code ?? "EXCLUIR_ERRO", "Falha ao excluir portaria: " + error.message, 500);
+  return true;
+}
+
+export async function excluirDestino(id) {
+  const { error } = await sb.from("destinos").delete().eq("id", id);
+  if (error) throw new ErroApi(error.code ?? "EXCLUIR_ERRO", "Falha ao excluir destino: " + error.message, 500);
+  return true;
+}
+
+export async function excluirUsuario(id) {
+  const { error } = await sb.from("perfis_usuario").delete().eq("id", id);
+  if (error) throw new ErroApi(error.code ?? "EXCLUIR_ERRO", "Falha ao excluir usuário: " + error.message, 500);
+  return true;
+}
