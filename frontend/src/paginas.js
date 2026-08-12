@@ -1060,25 +1060,135 @@ async function abrirModalRegistrarEntrega(veiculo, estado) {
   }));
 }
 
+function abrirModalEditarPortaria(portaria) {
+  if (!portaria) return;
+  const overlay = abrirModal({
+    titulo: `Editar Portaria`,
+    sub: `Portaria: ${esc(portaria.nome)} (${esc(portaria.codigo)})`,
+    conteudoHtml: `
+      <div class="linha">
+        <div class="campo">
+          <label for="ed-p-nome">Nome *</label>
+          <input id="ed-p-nome" value="${esc(portaria.nome)}" autocomplete="off">
+        </div>
+        <div class="campo">
+          <label for="ed-p-codigo">Código *</label>
+          <input id="ed-p-codigo" value="${esc(portaria.codigo)}" autocomplete="off">
+        </div>
+        <div class="campo">
+          <label for="ed-p-vistoria">Exige Vistoria?</label>
+          <select id="ed-p-vistoria">
+            <option value="false" ${!portaria.exige_vistoria ? "selected" : ""}>não</option>
+            <option value="true" ${portaria.exige_vistoria ? "selected" : ""}>sim</option>
+          </select>
+        </div>
+      </div>
+    `,
+    acoesHtml: `
+      <button class="secundario auto" data-fechar-modal>Cancelar</button>
+      <button class="primario auto" id="btn-salvar-ed-portaria">Salvar</button>
+    `,
+  });
+
+  overlay.querySelector("[data-fechar-modal]")?.addEventListener("click", fecharModal);
+  overlay.querySelector("#btn-salvar-ed-portaria").addEventListener("click", (e) => comBotao(e.currentTarget, async () => {
+    const nome = overlay.querySelector("#ed-p-nome").value.trim();
+    const codigo = overlay.querySelector("#ed-p-codigo").value.trim().toUpperCase().replace(/[^A-Z0-9_-]/g, "_").slice(0, 30);
+    const exige_vistoria = overlay.querySelector("#ed-p-vistoria").value === "true";
+
+    if (nome.length < 2 || codigo.length < 2) return avisar("Informe nome e código válidos.", "erro");
+
+    const { error } = await sb.from("portarias").update({ nome, codigo, exige_vistoria }).eq("id", portaria.id);
+    if (error) return avisar(error.code === "23505" ? "Código já utilizado por outra portaria." : "Erro ao atualizar portaria.", "erro");
+
+    avisar("Portaria atualizada.", "ok");
+    fecharModal();
+    recarregar(true);
+  }));
+}
+
+function abrirModalEditarDestino(destino, estado) {
+  if (!destino) return;
+  const opcoesPortarias = (estado.portarias ?? []).map((p) =>
+    `<option value="${esc(p.id)}" ${p.id === destino.portaria_id ? "selected" : ""}>${esc(p.nome)}</option>`
+  ).join("");
+
+  const overlay = abrirModal({
+    titulo: `Editar Destino`,
+    sub: `Destino: ${esc(destino.nome)} (${esc(destino.codigo)})`,
+    conteudoHtml: `
+      <div class="linha">
+        <div class="campo">
+          <label for="ed-d-nome">Nome *</label>
+          <input id="ed-d-nome" value="${esc(destino.nome)}" autocomplete="off">
+        </div>
+        <div class="campo">
+          <label for="ed-d-codigo">Código *</label>
+          <input id="ed-d-codigo" value="${esc(destino.codigo)}" autocomplete="off">
+        </div>
+        <div class="campo">
+          <label for="ed-d-portaria">Portaria vinculada (opcional)</label>
+          <select id="ed-d-portaria">
+            <option value="">— Nenhuma —</option>
+            ${opcoesPortarias}
+          </select>
+        </div>
+      </div>
+    `,
+    acoesHtml: `
+      <button class="secundario auto" data-fechar-modal>Cancelar</button>
+      <button class="primario auto" id="btn-salvar-ed-destino">Salvar</button>
+    `,
+  });
+
+  overlay.querySelector("[data-fechar-modal]")?.addEventListener("click", fecharModal);
+  overlay.querySelector("#btn-salvar-ed-destino").addEventListener("click", (e) => comBotao(e.currentTarget, async () => {
+    const nome = overlay.querySelector("#ed-d-nome").value.trim();
+    const codigo = overlay.querySelector("#ed-d-codigo").value.trim().toUpperCase().replace(/[^A-Z0-9_-]/g, "_").slice(0, 30);
+    const portaria_id = overlay.querySelector("#ed-d-portaria").value || null;
+
+    if (nome.length < 2 || codigo.length < 2) return avisar("Informe nome e código válidos.", "erro");
+
+    const { error } = await sb.from("destinos").update({ nome, codigo, portaria_id }).eq("id", destino.id);
+    if (error) return avisar(error.code === "23505" ? "Código já utilizado por outro destino." : "Erro ao atualizar destino.", "erro");
+
+    avisar("Destino atualizado.", "ok");
+    fecharModal();
+    recarregar(true);
+  }));
+}
+
 // =====================================================================
 // CADASTROS (portarias e destinos) — só MASTER
 // =====================================================================
 async function cadastros(alvo, estado) {
   const linhasPortarias = (estado.portarias ?? []).map((p) => `
-    <tr><td>${esc(p.nome)}</td><td>${esc(p.codigo)}</td>
-        <td>${p.exige_vistoria ? "sim" : "não"}</td>
-        <td style="white-space:nowrap">
-          <button class="secundario auto" data-desativar-portaria="${esc(p.id)}">Desativar</button>
-          <button class="perigo auto" data-excluir-portaria="${esc(p.id)}" data-nome="${esc(p.nome)}">Excluir</button>
-        </td></tr>`).join("");
+    <tr>
+      <td class="sem-quebra"><strong>${esc(p.nome)}</strong></td>
+      <td class="sem-quebra">${esc(p.codigo)}</td>
+      <td>${p.exige_vistoria ? "sim" : "não"}</td>
+      <td class="acoes">
+        <div class="tabela-acoes">
+          <button class="secundario" data-editar-portaria="${esc(p.id)}">Editar</button>
+          <button class="secundario" data-desativar-portaria="${esc(p.id)}">Desativar</button>
+          <button class="perigo" data-excluir-portaria="${esc(p.id)}" data-nome="${esc(p.nome)}">Excluir</button>
+        </div>
+      </td>
+    </tr>`).join("");
 
   const linhasDestinos = (estado.destinos ?? []).map((d) => `
-    <tr><td>${esc(d.nome)}</td><td>${esc(d.codigo)}</td>
-        <td>${esc((estado.portarias ?? []).find((p) => p.id === d.portaria_id)?.nome ?? "—")}</td>
-        <td style="white-space:nowrap">
-          <button class="secundario auto" data-desativar-destino="${esc(d.id)}">Desativar</button>
-          <button class="perigo auto" data-excluir-destino="${esc(d.id)}" data-nome="${esc(d.nome)}">Excluir</button>
-        </td></tr>`).join("");
+    <tr>
+      <td class="sem-quebra"><strong>${esc(d.nome)}</strong></td>
+      <td class="sem-quebra">${esc(d.codigo)}</td>
+      <td>${esc((estado.portarias ?? []).find((p) => p.id === d.portaria_id)?.nome ?? "—")}</td>
+      <td class="acoes">
+        <div class="tabela-acoes">
+          <button class="secundario" data-editar-destino="${esc(d.id)}">Editar</button>
+          <button class="secundario" data-desativar-destino="${esc(d.id)}">Desativar</button>
+          <button class="perigo" data-excluir-destino="${esc(d.id)}" data-nome="${esc(d.nome)}">Excluir</button>
+        </div>
+      </td>
+    </tr>`).join("");
 
   alvo.innerHTML = `
     <h1>Portarias e destinos</h1>
@@ -1097,7 +1207,7 @@ async function cadastros(alvo, estado) {
     </section>
 
     <div class="tabela-rolagem"><table>
-      <thead><tr><th>Portaria</th><th>Código</th><th>Vistoria</th><th></th></tr></thead>
+      <thead><tr><th>Portaria</th><th>Código</th><th>Vistoria</th><th class="acoes">Ações</th></tr></thead>
       <tbody>${linhasPortarias || '<tr><td colspan="4">Nenhuma portaria ativa.</td></tr>'}</tbody></table></div>
 
     <section class="cartao" style="margin-top:24px">
@@ -1116,7 +1226,7 @@ async function cadastros(alvo, estado) {
     </section>
 
     <div class="tabela-rolagem"><table>
-      <thead><tr><th>Destino</th><th>Código</th><th>Portaria</th><th></th></tr></thead>
+      <thead><tr><th>Destino</th><th>Código</th><th>Portaria Vinculada</th><th class="acoes">Ações</th></tr></thead>
       <tbody>${linhasDestinos || '<tr><td colspan="4">Nenhum destino ativo.</td></tr>'}</tbody></table></div>`;
 
   const normalizarCodigo = (s) => s.trim().toUpperCase().replace(/[^A-Z0-9_-]/g, "_").slice(0, 30);
@@ -1129,7 +1239,7 @@ async function cadastros(alvo, estado) {
       .insert({ nome, codigo, exige_vistoria: $("#p-vistoria").value === "true" });
     if (error) return avisar(error.code === "23505" ? "Código já usado." : "Não foi possível salvar.", "erro");
     avisar("Portaria criada.", "ok");
-    location.reload();
+    recarregar(true);
   }));
 
   $("#btn-destino").addEventListener("click", (e) => comBotao(e.currentTarget, async () => {
@@ -1140,14 +1250,26 @@ async function cadastros(alvo, estado) {
       .insert({ nome, codigo, portaria_id: $("#d-portaria").value || null });
     if (error) return avisar(error.code === "23505" ? "Código já usado." : "Não foi possível salvar.", "erro");
     avisar("Destino criado.", "ok");
-    location.reload();
+    recarregar(true);
   }));
+
+  $$("[data-editar-portaria]").forEach((b) =>
+    b.addEventListener("click", (e) => {
+      const portaria = (estado.portarias ?? []).find((p) => p.id === e.currentTarget.dataset.editarPortaria);
+      abrirModalEditarPortaria(portaria);
+    }));
+
+  $$("[data-editar-destino]").forEach((b) =>
+    b.addEventListener("click", (e) => {
+      const destino = (estado.destinos ?? []).find((d) => d.id === e.currentTarget.dataset.editarDestino);
+      abrirModalEditarDestino(destino, estado);
+    }));
 
   const desativar = (tabela, id) => comBotao(null, async () => {
     if (!confirm("Desativar este registro? Ele deixa de aparecer nas movimentações.")) return;
     const { error } = await sb.from(tabela).update({ ativo: false }).eq("id", id);
     avisar(error ? "Não foi possível desativar." : "Registro desativado.", error ? "erro" : "ok");
-    if (!error) location.reload();
+    if (!error) recarregar(true);
   });
 
   $$("[data-desativar-portaria]").forEach((b) =>
@@ -1162,7 +1284,7 @@ async function cadastros(alvo, estado) {
       try {
         await api.excluirPortaria(excluirPortaria);
         avisar(`Portaria ${nome} excluída do banco de dados.`, "ok");
-        location.reload();
+        recarregar(true);
       } catch (err) {
         avisar(err.message, "erro", 9000);
       }
@@ -1175,7 +1297,7 @@ async function cadastros(alvo, estado) {
       try {
         await api.excluirDestino(excluirDestino);
         avisar(`Destino ${nome} excluído do banco de dados.`, "ok");
-        location.reload();
+        recarregar(true);
       } catch (err) {
         avisar(err.message, "erro", 9000);
       }
