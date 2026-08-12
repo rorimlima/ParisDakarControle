@@ -144,10 +144,11 @@ function ligarRealtime() {
 
 // --------------------------------------------------------------- boot
 async function carregarBase() {
-  const [v, p, d] = await Promise.all([
+  const [v, p, d, u] = await Promise.all([
     api.listarVeiculos(), api.listarPortarias(), api.listarDestinos(),
+    api.listarUsuarios().catch(() => ({ data: [] })),
   ]);
-  estado.veiculos = v.dados; estado.portarias = p.dados; estado.destinos = d.dados;
+  estado.veiculos = v.dados; estado.portarias = p.dados; estado.destinos = d.dados; estado.perfis = u.data ?? [];
   if (v.doCache || p.doCache) avisar("Exibindo dados salvos neste aparelho.", "alerta");
 }
 

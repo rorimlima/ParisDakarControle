@@ -185,15 +185,18 @@ function mapaLocais(estado) {
 
 function tabelaMovimentacoes(lista, estado, nomeLocal) {
   const veiculo = new Map((estado.veiculos ?? []).map((v) => [v.id, v]));
+  const perfisMapa = new Map((estado.perfis ?? []).map((u) => [u.id, u.nome]));
   const podeDecidir = (m) => m.usuario_id === estado.perfil?.id || estado.perfil?.papel === "MASTER";
   const ehMaster = estado.perfil?.papel === "MASTER";
   return `<div class="tabela-rolagem"><table>
-    <thead><tr><th>Veículo</th><th>Tipo</th><th>Local</th><th>Data/hora</th><th>Status</th><th class="acoes">Ações</th></tr></thead>
+    <thead><tr><th>Veículo</th><th>Tipo</th><th>Lançado por</th><th>Local</th><th>Data/hora</th><th>Status</th><th class="acoes">Ações</th></tr></thead>
     <tbody>${lista.map((m) => {
       const v = veiculo.get(m.veiculo_id);
+      const autor = perfisMapa.get(m.usuario_id) ?? (m.usuario_id === estado.perfil?.id ? estado.perfil?.nome : "Usuário");
       return `<tr>
         <td class="sem-quebra"><strong>${esc(v ? `${v.cod_veiculo}` : m.veiculo_id.slice(0, 8))}</strong> ${v ? `<span style="font-size:12px;color:var(--text-muted)">(${esc(v.placa ?? v.modelo ?? "")})</span>` : ""}</td>
         <td class="sem-quebra">${esc(ROTULO_TIPO[m.tipo] ?? m.tipo)}</td>
+        <td class="sem-quebra"><strong>${esc(autor)}</strong></td>
         <td class="sem-quebra">${esc(nomeLocal(m.portaria_id ?? m.destino_id) ?? "—")}</td>
         <td class="sem-quebra">${esc(dataHora(m.data_hora))}</td>
         <td>${etiqueta(m.status)}</td>
@@ -1487,6 +1490,82 @@ async function usuarios(alvo, estado) {
 }
 
 // =====================================================================
+// LOGS & AUDITORIA GERAL — só MASTER
+// =====================================================================
+async function logs(alvo, estado) {
+  alvo.innerHTML = `
+    <div class="cabecalho-pagina">
+      <div>
+        <h1>Logs & Auditoria do Sistema</h1>
+        <p class="sub">Histórico geral de todas as ações, cadastros, movimentações, vistorias, entregas e exclusões.</p>
+      </div>
+      <button class="secundario auto" id="btn-atualizar-logs">Atualizar Logs</button>
+    </div>
+    <div id="logs-conteudo">${esqueleto(5)}</div>
+  `;
+
+  const carregar = async () => {
+    try {
+      const logsLista = await api.listarLogsAuditoria();
+      const perfisLista = estado.perfis ?? [];
+      const perfisMapa = new Map(perfisLista.map((p) => [p.id, p]));
+
+      if (logsLista.length === 0) {
+        $("#logs-conteudo").innerHTML = vazio("Nenhum log de auditoria registrado no momento.");
+        return;
+      }
+
+      const totalExclusoes = logsLista.filter((l) => l.acao?.includes("EXCLU")).length;
+      const totalEntregas = logsLista.filter((l) => l.acao?.includes("ENTREGA")).length;
+      const totalMovimentacoes = logsLista.filter((l) => l.entidade === "movimentacoes" || l.acao?.includes("MOV")).length;
+
+      $("#logs-conteudo").innerHTML = `
+        <div class="kpi-grade" style="margin-bottom:20px">
+          <div class="kpi-card" data-tipo="portaria">
+            <span class="kpi-label">Total de Ações Auditadas</span>
+            <span class="kpi-valor">${logsLista.length}</span>
+          </div>
+          <div class="kpi-card" data-tipo="transito">
+            <span class="kpi-label">Movimentações Lançadas</span>
+            <span class="kpi-valor">${totalMovimentacoes}</span>
+          </div>
+          <div class="kpi-card" data-tipo="destino">
+            <span class="kpi-label">Entregas Realizadas</span>
+            <span class="kpi-valor">${totalEntregas}</span>
+          </div>
+          <div class="kpi-card" data-tipo="pendente">
+            <span class="kpi-label">Exclusões Efetuadas</span>
+            <span class="kpi-valor">${totalExclusoes}</span>
+          </div>
+        </div>
+
+        <div class="tabela-rolagem"><table>
+          <thead><tr>
+            <th>Data e Hora</th><th>Usuário / Autor</th><th>Ação</th><th>Entidade</th><th>Detalhes / Dados</th>
+          </tr></thead>
+          <tbody>${logsLista.map((l) => {
+            const perfil = perfisMapa.get(l.usuario_id);
+            const autor = perfil ? `${esc(perfil.nome)} (${esc(perfil.papel)})` : (l.usuario_id ? esc(l.usuario_id.slice(0, 8)) : "Sistema");
+            const dadosTxt = l.dados ? esc(JSON.stringify(l.dados)) : "—";
+            return `<tr>
+              <td class="sem-quebra"><strong>${esc(dataHora(l.criado_em))}</strong></td>
+              <td class="sem-quebra">${autor}</td>
+              <td class="sem-quebra"><span class="etiqueta" data-s="DISPONIVEL">${esc(l.acao)}</span></td>
+              <td class="sem-quebra"><code>${esc(l.entidade)}</code> ${l.entidade_id ? `<span style="font-size:11px;color:var(--text-muted)">(${esc(l.entidade_id.slice(0, 8))})</span>` : ""}</td>
+              <td style="max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${dadosTxt}">${dadosTxt}</td>
+            </tr>`;
+          }).join("")}</tbody></table></div>
+      `;
+    } catch (err) {
+      $("#logs-conteudo").innerHTML = falha(err.message);
+    }
+  };
+
+  await carregar();
+  $("#btn-atualizar-logs")?.addEventListener("click", () => carregar());
+}
+
+// =====================================================================
 export const PAGINAS = {
   painel: { render: painel },
   movimentacoes: { render: movimentacoes },
@@ -1495,4 +1574,5 @@ export const PAGINAS = {
   cadastros: { render: cadastros, somenteMaster: true },
   importar: { render: importar, somenteMaster: true },
   usuarios: { render: usuarios, somenteMaster: true },
+  logs: { render: logs, somenteMaster: true },
 };

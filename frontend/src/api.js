@@ -386,8 +386,39 @@ export async function sincronizar(aoProgresso = () => {}) {
   return { enviados, conflitos, restantes: (await fila.listarFila()).length };
 }
 
-// ------------------------------------------------------------ exclusões reais
+export async function registrarLog(acao, entidade, entidade_id, dados = null) {
+  try {
+    const user = (await sb.auth.getUser())?.data?.user;
+    await sb.from("logs_auditoria").insert({
+      usuario_id: user?.id || null,
+      acao,
+      entidade,
+      entidade_id: entidade_id || null,
+      dados: dados || null,
+    });
+  } catch (e) {
+    console.warn("Falha ao registrar log de auditoria:", e);
+  }
+}
+
+export async function listarLogsAuditoria(filtro = {}) {
+  let query = sb.from("logs_auditoria")
+    .select("id, usuario_id, acao, entidade, entidade_id, dados, criado_em")
+    .order("criado_em", { ascending: false })
+    .limit(400);
+
+  if (filtro.entidade) query = query.eq("entidade", filtro.entidade);
+  if (filtro.entidade_id) query = query.eq("entidade_id", filtro.entidade_id);
+  if (filtro.usuario_id) query = query.eq("usuario_id", filtro.usuario_id);
+
+  const { data, error } = await query;
+  if (error) throw new ErroApi(error.code ?? "LOGS_ERRO", "Falha ao carregar os logs: " + error.message, 400);
+  return data ?? [];
+}
+
+// ------------------------------------------------------------ exclusões reais com log
 export async function excluirVeiculo(id) {
+  await registrarLog("EXCLUSAO_VEICULO", "veiculos", id);
   await sb.from("movimentacoes").delete().eq("veiculo_id", id);
   const { error } = await sb.from("veiculos").delete().eq("id", id);
   if (error) throw new ErroApi(error.code ?? "EXCLUIR_ERRO", "Falha ao excluir veículo: " + error.message, 500);
@@ -395,24 +426,28 @@ export async function excluirVeiculo(id) {
 }
 
 export async function excluirMovimentacao(id) {
+  await registrarLog("EXCLUSAO_MOVIMENTACAO", "movimentacoes", id);
   const { error } = await sb.from("movimentacoes").delete().eq("id", id);
   if (error) throw new ErroApi(error.code ?? "EXCLUIR_ERRO", "Falha ao excluir movimentação: " + error.message, 500);
   return true;
 }
 
 export async function excluirPortaria(id) {
+  await registrarLog("EXCLUSAO_PORTARIA", "portarias", id);
   const { error } = await sb.from("portarias").delete().eq("id", id);
   if (error) throw new ErroApi(error.code ?? "EXCLUIR_ERRO", "Falha ao excluir portaria: " + error.message, 500);
   return true;
 }
 
 export async function excluirDestino(id) {
+  await registrarLog("EXCLUSAO_DESTINO", "destinos", id);
   const { error } = await sb.from("destinos").delete().eq("id", id);
   if (error) throw new ErroApi(error.code ?? "EXCLUIR_ERRO", "Falha ao excluir destino: " + error.message, 500);
   return true;
 }
 
 export async function excluirUsuario(id) {
+  await registrarLog("EXCLUSAO_USUARIO", "perfis_usuario", id);
   const { error } = await sb.from("perfis_usuario").delete().eq("id", id);
   if (error) throw new ErroApi(error.code ?? "EXCLUIR_ERRO", "Falha ao excluir usuário: " + error.message, 500);
   return true;
@@ -434,6 +469,7 @@ export async function registrarEntregaVeiculo({
     p_observacoes: observacoes || null,
   });
   if (error) throw new ErroApi(error.code ?? "ENTREGA_ERRO", "Falha ao registrar entrega: " + error.message, 400);
+  await registrarLog("ENTREGA_VEICULO", "veiculos", veiculo_id, { km_entrega, entregador_nome, recebedor_nome });
   return data;
 }
 
